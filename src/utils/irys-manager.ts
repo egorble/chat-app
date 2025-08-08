@@ -96,6 +96,42 @@ class IrysManager {
     }
   }
 
+  // Optimized agent saving using mutable references
+  async saveAgentOptimized(agent: any, userAddress: string) {
+    try {
+      console.log('🚀 Starting optimized agent save:', agent.name);
+      
+      const response = await fetch('/api/save-agent-optimized', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          ...agent,
+          userAddress
+        })
+      });
+      
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Failed to save agent');
+      }
+      
+      const result = await response.json();
+      console.log('✅ Optimized agent save successful:', result);
+      
+      return {
+        irysId: result.irysId,
+        mutableUrl: result.mutableUrl,
+        isUpdate: result.isUpdate,
+        rootTxId: result.rootTxId
+      };
+    } catch (error) {
+      console.error('❌ Error in optimized agent save:', error);
+      throw error;
+    }
+  }
+
   async loadAgent(irysId: string) {
     try {
       console.log('📥 Loading agent from Irys ID:', irysId);
@@ -254,6 +290,34 @@ class IrysManager {
       return agents;
     } catch (error) {
       console.error('❌ Error loading user agents:', error);
+      throw error;
+    }
+  }
+  // Optimized agent loading using mutable references
+  async loadUserAgentsOptimized(userAddress: string) {
+    try {
+      console.log('🚀 Starting optimized agents load for user:', userAddress);
+      
+      const response = await fetch(`/api/load-agents-optimized?userAddress=${encodeURIComponent(userAddress)}`);
+      
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Failed to load agents');
+      }
+      
+      const result = await response.json();
+      console.log('✅ Optimized agents load successful:', {
+        totalAgents: result.agents.length,
+        optimization: result.optimization
+      });
+      
+      return {
+        agents: result.agents,
+        metadata: result.metadata,
+        optimization: result.optimization
+      };
+    } catch (error) {
+      console.error('❌ Error in optimized agents load:', error);
       throw error;
     }
   }

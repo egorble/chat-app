@@ -48,12 +48,23 @@ export function AgentsProvider({ children }: { children: ReactNode }) {
 
     try {
       setIsLoading(true)
-      console.log('🔄 Loading user agents from Irys...')
+      console.log('🔄 Loading user agents with optimization...')
       
-      const userAgents = await irysManager.loadUserAgents(address)
-      setAgents(userAgents)
-      
-      console.log(`✅ Loaded ${userAgents.length} agents from Irys`)
+      // Try optimized loading first, fallback to regular if needed
+      try {
+        const result = await irysManager.loadUserAgentsOptimized(address)
+        setAgents(result.agents)
+        
+        console.log(`✅ Loaded ${result.agents.length} agents with optimization:`, {
+          mutableUrlUsage: result.optimization.mutableUrlUsage,
+          optimizationPercentage: result.optimization.optimizationPercentage
+        })
+      } catch (optimizedError) {
+        console.warn('⚠️ Optimized loading failed, falling back to regular method:', optimizedError)
+        const userAgents = await irysManager.loadUserAgents(address)
+        setAgents(userAgents)
+        console.log(`✅ Loaded ${userAgents.length} agents via fallback method`)
+      }
     } catch (error) {
       console.error('❌ Failed to load user agents:', error)
       // Don't throw error, just log it and keep empty agents array
@@ -72,15 +83,29 @@ export function AgentsProvider({ children }: { children: ReactNode }) {
     }
 
     // Only save to Irys if wallet is connected
-    if (isConnected) {
+    if (isConnected && address) {
       try {
-        console.log('💾 Saving agent to Irys:', newAgent.name)
-        const irysId = await irysManager.saveAgent(newAgent)
-        newAgent.irysId = irysId
-        console.log('✅ Agent saved to Irys with ID:', irysId)
+        console.log('💾 Saving agent with optimization:', newAgent.name)
+        
+        // Try optimized saving first, fallback to regular if needed
+        try {
+          const result = await irysManager.saveAgentOptimized(newAgent, address)
+          newAgent.irysId = result.irysId
+          
+          console.log('✅ Agent saved with optimization:', {
+            irysId: result.irysId,
+            mutableUrl: result.mutableUrl,
+            isUpdate: result.isUpdate
+          })
+        } catch (optimizedError) {
+          console.warn('⚠️ Optimized saving failed, falling back to regular method:', optimizedError)
+          const irysId = await irysManager.saveAgent(newAgent)
+          newAgent.irysId = irysId
+          console.log('✅ Agent saved via fallback method with ID:', irysId)
+        }
         
       } catch (error: any) {
-        console.error('❌ Failed to save agent to Irys:', error)
+        console.error('❌ Failed to save agent:', error)
         
         // Provide user-friendly error messages
         let errorMessage = 'Failed to save to blockchain';
@@ -93,7 +118,7 @@ export function AgentsProvider({ children }: { children: ReactNode }) {
         }
         
         console.warn('⚠️', errorMessage);
-        throw error; // Don't add agent if Irys save fails
+        throw error; // Don't add agent if save fails
       }
     } else {
       console.log('⚠️ Wallet not connected, cannot save agent')
@@ -120,14 +145,25 @@ export function AgentsProvider({ children }: { children: ReactNode }) {
         deletedAt: new Date()
       }
 
-      // Try to save the deleted status to Irys if wallet is connected
-      if (isConnected && agent.irysId) {
+      // Try to save the deleted status using optimized method if wallet is connected
+      if (isConnected && address && agent.irysId) {
         try {
-          console.log('💾 Updating agent deletion status in Irys')
-          await irysManager.saveAgent(deletedAgent)
-          console.log('✅ Agent deletion status updated in Irys')
+          console.log('💾 Updating agent deletion status with optimization')
+          
+          // Try optimized saving first, fallback to regular if needed
+          try {
+            const result = await irysManager.saveAgentOptimized(deletedAgent, address)
+            console.log('✅ Agent deletion status updated with optimization:', {
+              irysId: result.irysId,
+              mutableUrl: result.mutableUrl
+            })
+          } catch (optimizedError) {
+            console.warn('⚠️ Optimized deletion update failed, falling back to regular method:', optimizedError)
+            await irysManager.saveAgent(deletedAgent)
+            console.log('✅ Agent deletion status updated via fallback method')
+          }
         } catch (error) {
-          console.error('❌ Failed to update deletion status in Irys:', error)
+          console.error('❌ Failed to update deletion status:', error)
           throw error
         }
       } else {
