@@ -56,21 +56,38 @@ export async function POST(request: NextRequest) {
     // Create a readable stream for streaming response
     const stream = new ReadableStream({
       async start(controller) {
-        const encoder = new TextEncoder();
+        const encoder = new TextEncoder()
+        let totalContent = ''
+        let chunkCount = 0
         
         try {
           for await (const chunk of completion) {
-            const content = chunk.choices[0]?.delta?.content;
+            const content = chunk.choices[0]?.delta?.content
             if (content) {
-              const data = `data: ${JSON.stringify({ content })}\n\n`;
-              controller.enqueue(encoder.encode(data));
+              totalContent += content
+              chunkCount++
+              const data = `data: ${JSON.stringify({ content })}\n\n`
+              controller.enqueue(encoder.encode(data))
             }
           }
+          
+          // Log completion statistics
+          console.log('🤖 OpenAI response completed:', {
+            totalLength: totalContent.length,
+            chunkCount,
+            isEmpty: totalContent.trim() === '',
+            preview: totalContent.substring(0, 100) + (totalContent.length > 100 ? '...' : '')
+          })
+          
+          // Warn if response is empty
+          if (totalContent.trim() === '') {
+            console.warn('⚠️ OpenAI returned empty response!')
+          }
         } catch (error) {
-          console.error('Streaming error:', error);
-          controller.error(error);
+          console.error('Streaming error:', error)
+          controller.error(error)
         } finally {
-          controller.close();
+          controller.close()
         }
       },
     });

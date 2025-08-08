@@ -74,10 +74,12 @@ export function ChatInterface() {
   const prevMessagesRef = useRef<Message[]>([])
   
   useEffect(() => {
-    // Save messages from previous chat when switching
+    // Save messages from previous chat when switching (async to avoid setState during render)
     if (prevChatIdRef.current && prevChatIdRef.current !== currentChatId && prevMessagesRef.current.length > 0) {
-      // Save previous chat messages immediately
-      saveMessagesToChat(prevChatIdRef.current, prevMessagesRef.current)
+      // Use setTimeout to defer the setState call and avoid "setState during render" error
+      setTimeout(() => {
+        saveMessagesToChat(prevChatIdRef.current!, prevMessagesRef.current)
+      }, 0)
     }
     
     // Load messages for new chat (only if we're actually switching chats)
@@ -210,10 +212,12 @@ export function ChatInterface() {
     }]
     setMessages(newMessages)
     
-    // Immediately save the new messages to prevent loss during chat switching
+    // Immediately save the new messages to prevent loss during chat switching (async to avoid setState during render)
     if (chatId) {
-      saveMessagesToChat(chatId, newMessages)
-      console.log('💾 Immediate save after user message:', { chatId, messageCount: newMessages.length })
+      setTimeout(() => {
+        saveMessagesToChat(chatId, newMessages)
+        console.log('💾 Immediate save after user message:', { chatId, messageCount: newMessages.length })
+      }, 0)
     }
     
     setMessage('')
@@ -272,6 +276,87 @@ export function ChatInterface() {
             }
           }
         }
+      }
+      
+      // Check if assistant message is empty after streaming
+      if (assistantMessage.trim() === '') {
+        console.warn('⚠️ Empty assistant response detected, attempting retry...')
+        
+        // Try one more time with a retry request
+        try {
+          const retryResponse = await fetch('/api/chat', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              message: userMessage,
+              conversationHistory: messages.slice(0, -1), // Exclude the empty assistant message
+              systemPrompt: agentToUse?.systemPrompt || 'You are a helpful assistant.',
+            }),
+          })
+
+          if (retryResponse.ok && retryResponse.body) {
+            const retryReader = retryResponse.body.getReader()
+            const retryDecoder = new TextDecoder()
+            let retryAssistantMessage = ''
+
+            while (true) {
+              const { done, value } = await retryReader.read()
+              if (done) break
+
+              const chunk = retryDecoder.decode(value)
+              const lines = chunk.split('\n')
+              
+              for (const line of lines) {
+                if (line.startsWith('data: ')) {
+                  try {
+                    const data = JSON.parse(line.slice(6))
+                    if (data.content) {
+                      retryAssistantMessage += data.content
+                      setMessages(prev => {
+                        const newMessages = [...prev]
+                        if (newMessages.length > assistantMessageIndex) {
+                          newMessages[assistantMessageIndex].content = retryAssistantMessage
+                        }
+                        return newMessages
+                      })
+                    }
+                  } catch (e) {
+                    // Ignore parsing errors
+                  }
+                }
+              }
+            }
+
+            // Check retry result
+            if (retryAssistantMessage.trim() === '') {
+              console.warn('⚠️ Retry also returned empty response, providing fallback message')
+              setMessages(prev => {
+                const newMessages = [...prev]
+                if (newMessages.length > assistantMessageIndex) {
+                  newMessages[assistantMessageIndex].content = 'Вибачте, я не зміг згенерувати відповідь. Спробуйте ще раз.'
+                }
+                return newMessages
+              })
+            } else {
+              console.log('✅ Retry successful:', { length: retryAssistantMessage.length, preview: retryAssistantMessage.substring(0, 50) + '...' })
+            }
+          } else {
+            throw new Error('Retry request failed')
+          }
+        } catch (retryError) {
+          console.error('❌ Retry failed:', retryError)
+          setMessages(prev => {
+            const newMessages = [...prev]
+            if (newMessages.length > assistantMessageIndex) {
+              newMessages[assistantMessageIndex].content = 'Вибачте, я не зміг згенерувати відповідь. Спробуйте ще раз.'
+            }
+            return newMessages
+          })
+        }
+      } else {
+        console.log('✅ Assistant response completed:', { length: assistantMessage.length, preview: assistantMessage.substring(0, 50) + '...' })
       }
     } catch (error) {
       console.error('Error sending message:', error)

@@ -2,6 +2,7 @@ import { WebUploader } from '@irys/web-upload';
 import { WebArbitrum } from '@irys/web-upload-ethereum';
 import { EthersV6Adapter } from '@irys/web-upload-ethereum-ethers-v6';
 import { ethers } from 'ethers';
+const { BrowserProvider } = ethers;
 import streamifier from 'streamifier';
 
 class IrysManager {
@@ -27,7 +28,7 @@ class IrysManager {
       const rpcUrl = process.env.NEXT_PUBLIC_ARBITRUM_RPC_URL || 'https://arb1.arbitrum.io/rpc';
       console.log('🌐 Using RPC URL:', rpcUrl);
       
-      const provider = new ethers.BrowserProvider(window.ethereum);
+      const provider = new BrowserProvider(window.ethereum);
       console.log('🔗 Ethereum provider created');
       
       // Initialize Irys with WebArbitrum and EthersV6Adapter
