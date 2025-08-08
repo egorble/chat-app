@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
 import ReactMarkdown from "react-markdown"
+import rehypeRaw from "rehype-raw"
 import { Prism as SyntaxHighlighter } from "react-syntax-highlighter"
 import { tomorrow } from "react-syntax-highlighter/dist/esm/styles/prism"
 import { useAgents } from "@/contexts/agents-context"
@@ -89,10 +90,15 @@ export function ChatInterface() {
       console.log('🔄 Previous chat was:', prevChatIdRef.current)
       console.log('🔄 Current messages before switch:', messages.length)
       
-      // Set messages directly without setTimeout to avoid race conditions
-      setMessages(chatMessages)
-      prevMessagesRef.current = chatMessages
-      console.log('🔄 Messages after switch:', chatMessages.length)
+      // Only load messages if the chat actually has saved messages
+      // This prevents clearing messages for newly created chats
+      if (chatMessages.length > 0 || messages.length === 0) {
+        setMessages(chatMessages)
+        prevMessagesRef.current = chatMessages
+        console.log('🔄 Messages after switch:', chatMessages.length)
+      } else {
+        console.log('🔄 Keeping current messages for new chat')
+      }
     } else if (!currentChatId && prevChatIdRef.current !== null) {
       // Only clear messages if we were previously in a chat and now have no chat
       console.log('🧹 Clearing messages - no current chat')
@@ -194,8 +200,10 @@ export function ChatInterface() {
 
     // Create new chat if none exists (before adding message to state)
     let chatId = currentChatId
+    let isNewChat = false
     if (!chatId) {
       chatId = createNewChat()
+      isNewChat = true
     }
     
     // Update chat title if this is the first message and we have a chat
@@ -210,7 +218,15 @@ export function ChatInterface() {
       content: userMessage,
       agent: agentName 
     }]
-    setMessages(newMessages)
+    
+    // For new chats, set messages immediately to prevent clearing by useEffect
+    if (isNewChat) {
+      setMessages(newMessages)
+      // Also update the ref to prevent useEffect from clearing
+      prevMessagesRef.current = newMessages
+    } else {
+      setMessages(newMessages)
+    }
     
     // Immediately save the new messages to prevent loss during chat switching (async to avoid setState during render)
     if (chatId) {
@@ -378,9 +394,13 @@ export function ChatInterface() {
       if (chatId) {
         // Use setTimeout to ensure state is updated before saving
         setTimeout(() => {
+          // Get current messages and save them
           setMessages(currentMessages => {
-            saveMessagesToChat(chatId, currentMessages)
-            console.log('💾 Immediate save after AI response:', { chatId, messageCount: currentMessages.length })
+            // Save outside of setState to avoid render cycle issues
+            setTimeout(() => {
+              saveMessagesToChat(chatId, currentMessages)
+              console.log('💾 Immediate save after AI response:', { chatId, messageCount: currentMessages.length })
+            }, 0)
             return currentMessages
           })
         }, 100)
@@ -426,6 +446,7 @@ export function ChatInterface() {
                   {msg.role === 'assistant' ? (
                        <div className="prose prose-sm max-w-none prose-headings:text-gray-800 prose-p:text-gray-700 prose-strong:text-gray-800 prose-blockquote:border-l-4 prose-blockquote:border-gray-300 prose-blockquote:pl-4 prose-ul:list-disc prose-ol:list-decimal">
                          <ReactMarkdown 
+                           rehypePlugins={[rehypeRaw]}
                            components={{
                               code({ node, inline, className, children, ...props }: any) {
                                 const match = /language-(\w+)/.exec(className || '');
@@ -444,6 +465,12 @@ export function ChatInterface() {
                                     {children}
                                   </code>
                                 );
+                              },
+                              br({ node, ...props }: any) {
+                                return <br {...props} />;
+                              },
+                              p({ node, children, ...props }: any) {
+                                return <p className="mb-2 last:mb-0" {...props}>{children}</p>;
                               },
                             }}
                          >
