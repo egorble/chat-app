@@ -197,7 +197,9 @@ export function AppSidebar() {
                         <Button
                           onClick={(e) => {
                             e.stopPropagation()
-                            deleteChatSession(chat.id)
+                            if (confirm(`Ви впевнені, що хочете видалити чат "${chat.title}"?\n\nЦя дія не може бути скасована.`)) {
+                              deleteChatSession(chat.id)
+                            }
                           }}
                           size="sm"
                           variant="ghost"

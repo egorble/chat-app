@@ -15,6 +15,8 @@ interface ChatSession {
   createdAt: Date
   lastMessage?: string
   messages: Message[]
+  isDeleted?: boolean
+  deletedAt?: Date
 }
 
 interface ChatHistoryContextType {
@@ -26,7 +28,7 @@ interface ChatHistoryContextType {
   deleteChatSession: (chatId: string) => void
   saveMessagesToChat: (chatId: string, messages: Message[]) => void
   getChatMessages: (chatId: string) => Message[]
-  saveChatToIrys: (chatId: string, messages: Message[]) => Promise<void>
+  saveChatToIrys: (chatId: string, messages: Message[], isDeleted?: boolean) => Promise<void>
   loadChatsFromIrys: () => Promise<void>
 }
 
@@ -62,13 +64,6 @@ export function ChatHistoryProvider({ children }: { children: ReactNode }) {
       )
     )
   }, [])
-
-  const deleteChatSession = useCallback((chatId: string) => {
-    setChatSessions(prev => prev.filter(chat => chat.id !== chatId))
-    if (currentChatId === chatId) {
-      setCurrentChatId(null)
-    }
-  }, [currentChatId])
 
   const saveMessagesToChat = useCallback((chatId: string, messages: Message[]) => {
     // Only save if we have valid messages and chatId
@@ -115,14 +110,15 @@ export function ChatHistoryProvider({ children }: { children: ReactNode }) {
     return chat.messages ? [...chat.messages] : []
   }, [chatSessions])
 
-  const saveChatToIrys = useCallback(async (chatId: string, messages: Message[]) => {
+  const saveChatToIrys = useCallback(async (chatId: string, messages: Message[], isDeleted: boolean = false) => {
     if (!address) {
       console.warn('No wallet connected, cannot save to Irys')
       return
     }
 
-    if (!chatId || !Array.isArray(messages) || messages.length === 0) {
-      console.warn('Invalid chat data for Irys save:', { chatId, messages })
+    // Для видалених чатів дозволяємо збереження навіть без повідомлень
+    if (!chatId || (!isDeleted && (!Array.isArray(messages) || messages.length === 0))) {
+      console.warn('Invalid chat data for Irys save:', { chatId, messages, isDeleted })
       return
     }
 
@@ -133,7 +129,10 @@ export function ChatHistoryProvider({ children }: { children: ReactNode }) {
         return
       }
 
-      console.log('💾 Saving chat to Irys:', { chatId, title: chat.title, messageCount: messages.length })
+      const logMessage = isDeleted 
+        ? `🗑️ Saving deletion state to Irys: ${chatId}` 
+        : `💾 Saving chat to Irys: ${chatId} (${messages.length} messages)`
+      console.log(logMessage)
 
       const response = await fetch('/api/save-chat', {
         method: 'POST',
@@ -143,8 +142,10 @@ export function ChatHistoryProvider({ children }: { children: ReactNode }) {
         body: JSON.stringify({
           chatId,
           title: chat.title,
-          messages,
-          userAddress: address
+          messages: messages || [],
+          userAddress: address,
+          isDeleted,
+          deletedAt: isDeleted ? new Date().toISOString() : undefined
         })
       })
 
@@ -161,14 +162,62 @@ export function ChatHistoryProvider({ children }: { children: ReactNode }) {
     }
   }, [address, chatSessions])
 
+  const deleteChatSession = useCallback(async (chatId: string) => {
+    try {
+      console.log('🗑️ Starting deletion process for chat:', chatId);
+      
+      // Find the chat session to delete
+      const chatToDelete = chatSessions.find(chat => chat.id === chatId);
+      if (!chatToDelete) {
+        console.error('❌ Chat session not found:', chatId);
+        return;
+      }
+      
+      console.log('📋 Found chat to delete:', chatToDelete.title);
+      
+      // Immediately remove from local state for instant UI feedback
+      const activeSessions = chatSessions.filter(chat => chat.id !== chatId);
+      setChatSessions(activeSessions);
+      console.log(`🔄 Updated local state: ${activeSessions.length} active chats remaining`);
+      
+      // If the deleted chat was the current chat, switch to another one
+      if (currentChatId === chatId) {
+        const nextChat = activeSessions.length > 0 ? activeSessions[0] : null;
+        setCurrentChatId(nextChat?.id || null);
+        console.log('🎯 Switched to next chat:', nextChat?.title || 'none');
+      }
+      
+      // Save deletion state to Irys for synchronization
+      if (address) {
+        console.log('💾 Saving deletion state to Irys...');
+        
+        try {
+          await saveChatToIrys(chatId, chatToDelete.messages, true); // isDeleted = true
+          console.log('✅ Chat deletion successfully saved to Irys');
+        } catch (irysError) {
+          console.error('❌ Failed to save deletion state to Irys:', irysError);
+          // Note: We don't revert the local deletion to maintain UI consistency
+          // The chat will remain deleted locally even if Irys sync fails
+        }
+      }
+      
+      console.log('🎉 Chat deletion process completed for:', chatId);
+      
+    } catch (error) {
+      console.error('❌ Error in chat deletion process:', error);
+      // On error, we could optionally restore the chat to local state
+      // but for now we maintain the deletion for consistency
+    }
+  }, [currentChatId, chatSessions, address, saveChatToIrys])
+
   const loadChatsFromIrys = useCallback(async () => {
     if (!address) {
-      console.warn('No wallet connected, cannot load from Irys')
+      console.log('❌ No wallet address available')
       return
     }
 
     try {
-      console.log('📥 Loading chats from Irys for address:', address)
+      console.log('🔄 Loading active chats for address:', address)
 
       const response = await fetch(`/api/load-chats?userAddress=${encodeURIComponent(address)}`)
       
@@ -178,30 +227,57 @@ export function ChatHistoryProvider({ children }: { children: ReactNode }) {
       }
 
       const result = await response.json()
-      console.log('📋 Loaded chats from Irys:', result)
+      console.log('📦 Received chats data:', {
+        count: result.chats?.length || 0,
+        hasChats: Array.isArray(result.chats)
+      })
 
-      if (result.success && result.chats && result.chats.length > 0) {
-        // Convert loaded chats to ChatSession format
-        const loadedSessions: ChatSession[] = result.chats.map((chatData: any) => ({
-          id: chatData.chatId,
-          title: chatData.title,
-          createdAt: new Date(chatData.createdAt),
-          lastMessage: chatData.messages.length > 0 ? chatData.messages[chatData.messages.length - 1].content : undefined,
-          messages: chatData.messages
-        }))
+      if (result.chats && Array.isArray(result.chats) && result.chats.length > 0) {
+        console.log('📋 Processing chats data structure:', result.chats[0]);
+        
+        // Convert loaded chats to ChatSession format, ensuring only active chats
+        const loadedSessions: ChatSession[] = result.chats
+          .filter((chatData: any) => {
+            // Extra safety: ensure we only process non-deleted chats
+            const isActive = !chatData.isDeleted
+            if (!isActive) {
+              console.log('🚫 Filtering out deleted chat:', chatData.id || chatData.chatId)
+            }
+            return isActive
+          })
+          .map((chatData: any) => {
+            // Ensure messages is an array
+            const messages = Array.isArray(chatData.messages) ? chatData.messages : [];
+            
+            const session: ChatSession = {
+              id: chatData.chatId || chatData.id,
+              title: chatData.title || 'Untitled Chat',
+              createdAt: new Date(chatData.createdAt),
+              lastMessage: messages.length > 0 ? messages[messages.length - 1].content : undefined,
+              messages: messages,
+              isDeleted: false, // Explicitly set to false for active chats
+              deletedAt: undefined // Clear any deletion timestamp
+            }
+            
+            console.log('✅ Processed active chat:', session.id, session.title)
+            return session
+          })
 
-        // Merge with existing sessions, avoiding duplicates
-        setChatSessions(prev => {
-          const existingIds = new Set(prev.map(chat => chat.id))
-          const newSessions = loadedSessions.filter(chat => !existingIds.has(chat.id))
-          return [...newSessions, ...prev].sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())
-        })
-
-        console.log(`✅ Successfully loaded ${loadedSessions.length} chats from Irys`)
+        console.log(`🎯 Successfully loaded ${loadedSessions.length} active chats`)
+        
+        // Sort by creation date (newest first) and update state
+        const sortedSessions = loadedSessions.sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())
+        setChatSessions(sortedSessions)
+        
+        console.log('📋 Chat sessions state updated with active chats only')
+      } else {
+        console.log('📭 No active chats found, setting empty array')
+        setChatSessions([])
       }
 
     } catch (error) {
-      console.error('❌ Error loading chats from Irys:', error)
+      console.error('❌ Error loading chats:', error)
+      // On error, don't clear existing sessions to avoid data loss
     }
   }, [address])
 
