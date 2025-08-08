@@ -80,22 +80,30 @@ export function ChatInterface() {
       saveMessagesToChat(prevChatIdRef.current, prevMessagesRef.current)
     }
     
-    // Load messages for new chat (only if we're actually switching chats, not on initial load)
-    if (currentChatId) {
+    // Load messages for new chat (only if we're actually switching chats)
+    if (currentChatId && prevChatIdRef.current !== currentChatId) {
       const chatMessages = getChatMessages(currentChatId)
-      // Only update messages if we're switching from a different chat or if messages are empty
-      if (prevChatIdRef.current !== currentChatId || messages.length === 0) {
+      console.log(`🔄 Loading messages for chat ${currentChatId}:`, chatMessages.length, 'messages')
+      console.log('🔄 Previous chat was:', prevChatIdRef.current)
+      console.log('🔄 Current messages before switch:', messages.length)
+      
+      // Force clear messages first, then set new ones to prevent old messages from showing
+      setMessages([])
+      // Use setTimeout to ensure the clear happens before setting new messages
+      setTimeout(() => {
         setMessages(chatMessages)
         prevMessagesRef.current = chatMessages
-      }
-    } else if (prevChatIdRef.current !== null) {
-      // Only clear messages if we were previously in a chat
+        console.log('🔄 Messages after switch:', chatMessages.length)
+      }, 0)
+    } else if (!currentChatId && prevChatIdRef.current !== null) {
+      // Only clear messages if we were previously in a chat and now have no chat
+      console.log('🧹 Clearing messages - no current chat')
       setMessages([])
       prevMessagesRef.current = []
     }
     
     prevChatIdRef.current = currentChatId
-  }, [currentChatId, saveMessagesToChat, getChatMessages, messages.length])
+  }, [currentChatId, saveMessagesToChat, getChatMessages])
 
   // Load chats from Irys when wallet is connected
   useEffect(() => {
@@ -111,8 +119,11 @@ export function ChatInterface() {
       // Update the ref to track current messages
       prevMessagesRef.current = messages
       
+      console.log('💾 Auto-save triggered:', { chatId: currentChatId, messageCount: messages.length, isLoading })
+      
       // Debounced save to local state
       const timeoutId = setTimeout(() => {
+        console.log('💾 Executing auto-save to local state:', { chatId: currentChatId, messageCount: messages.length })
         saveMessagesToChat(currentChatId, messages)
       }, 500)
       return () => clearTimeout(timeoutId)
@@ -146,13 +157,15 @@ export function ChatInterface() {
     wasLoadingRef.current = isLoading
   }, [isLoading, currentChatId, messages, address, saveChatToIrys])
 
-  // Set saved message count when switching chats (don't reset to 0)
+  // Set saved message count when switching chats (only on chat change, not message change)
   useEffect(() => {
-    if (currentChatId && messages.length > 0) {
-      lastSavedMessageCountRef.current = messages.length
-      console.log('🔄 Switched to chat:', { chatId: currentChatId, messageCount: messages.length, savedCount: lastSavedMessageCountRef.current })
+    if (currentChatId) {
+      // Get current messages for this chat from context
+      const chatMessages = getChatMessages(currentChatId)
+      lastSavedMessageCountRef.current = chatMessages.length
+      console.log('🔄 Set saved count for chat:', { chatId: currentChatId, messageCount: chatMessages.length, savedCount: lastSavedMessageCountRef.current })
     }
-  }, [currentChatId])
+  }, [currentChatId, getChatMessages])
 
 
 
