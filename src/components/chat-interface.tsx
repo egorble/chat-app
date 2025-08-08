@@ -87,14 +87,10 @@ export function ChatInterface() {
       console.log('🔄 Previous chat was:', prevChatIdRef.current)
       console.log('🔄 Current messages before switch:', messages.length)
       
-      // Force clear messages first, then set new ones to prevent old messages from showing
-      setMessages([])
-      // Use setTimeout to ensure the clear happens before setting new messages
-      setTimeout(() => {
-        setMessages(chatMessages)
-        prevMessagesRef.current = chatMessages
-        console.log('🔄 Messages after switch:', chatMessages.length)
-      }, 0)
+      // Set messages directly without setTimeout to avoid race conditions
+      setMessages(chatMessages)
+      prevMessagesRef.current = chatMessages
+      console.log('🔄 Messages after switch:', chatMessages.length)
     } else if (!currentChatId && prevChatIdRef.current !== null) {
       // Only clear messages if we were previously in a chat and now have no chat
       console.log('🧹 Clearing messages - no current chat')
@@ -113,22 +109,32 @@ export function ChatInterface() {
     }
   }, [isConnected, address, loadChatsFromIrys])
 
-  // Auto-save messages when they change (only for current chat)
+  // Auto-save messages when they change (only for current chat) - disabled as we now use immediate saves
+  // This prevents conflicts with immediate saves after user messages and AI responses
+  /*
   useEffect(() => {
     if (currentChatId && messages.length > 0 && !isLoading) {
-      // Update the ref to track current messages
-      prevMessagesRef.current = messages
+      // Check if messages actually changed from what we have saved
+      const savedMessages = getChatMessages(currentChatId)
+      const messagesChanged = messages.length !== savedMessages.length || 
+        JSON.stringify(messages) !== JSON.stringify(savedMessages)
       
-      console.log('💾 Auto-save triggered:', { chatId: currentChatId, messageCount: messages.length, isLoading })
-      
-      // Debounced save to local state
-      const timeoutId = setTimeout(() => {
-        console.log('💾 Executing auto-save to local state:', { chatId: currentChatId, messageCount: messages.length })
-        saveMessagesToChat(currentChatId, messages)
-      }, 500)
-      return () => clearTimeout(timeoutId)
+      if (messagesChanged) {
+        // Update the ref to track current messages
+        prevMessagesRef.current = messages
+        
+        console.log('💾 Auto-save triggered:', { chatId: currentChatId, messageCount: messages.length, isLoading })
+        
+        // Debounced save to local state
+        const timeoutId = setTimeout(() => {
+          console.log('💾 Executing auto-save to local state:', { chatId: currentChatId, messageCount: messages.length })
+          saveMessagesToChat(currentChatId, messages)
+        }, 500)
+        return () => clearTimeout(timeoutId)
+      }
     }
-  }, [messages, currentChatId, saveMessagesToChat, isLoading])
+  }, [messages, currentChatId, saveMessagesToChat, getChatMessages, isLoading])
+  */
 
   // Auto-save to Irys after each AI response (when loading stops and we have messages)
   const lastSavedMessageCountRef = useRef<number>(0)
@@ -203,6 +209,13 @@ export function ChatInterface() {
       agent: agentName 
     }]
     setMessages(newMessages)
+    
+    // Immediately save the new messages to prevent loss during chat switching
+    if (chatId) {
+      saveMessagesToChat(chatId, newMessages)
+      console.log('💾 Immediate save after user message:', { chatId, messageCount: newMessages.length })
+    }
+    
     setMessage('')
     setIsLoading(true)
 
@@ -275,6 +288,19 @@ export function ChatInterface() {
       })
     } finally {
       setIsLoading(false)
+      
+      // Save messages after AI response is complete
+      if (chatId) {
+        // Use setTimeout to ensure state is updated before saving
+        setTimeout(() => {
+          setMessages(currentMessages => {
+            saveMessagesToChat(chatId, currentMessages)
+            console.log('💾 Immediate save after AI response:', { chatId, messageCount: currentMessages.length })
+            return currentMessages
+          })
+        }, 100)
+      }
+      
       // Ensure scroll to bottom after message is sent
       scrollToBottom()
     }
