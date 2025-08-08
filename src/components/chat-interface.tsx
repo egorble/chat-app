@@ -111,13 +111,48 @@ export function ChatInterface() {
       // Update the ref to track current messages
       prevMessagesRef.current = messages
       
-      // Debounced save
+      // Debounced save to local state
       const timeoutId = setTimeout(() => {
         saveMessagesToChat(currentChatId, messages)
       }, 500)
       return () => clearTimeout(timeoutId)
     }
   }, [messages, currentChatId, saveMessagesToChat, isLoading])
+
+  // Auto-save to Irys after each AI response (when loading stops and we have messages)
+  const lastSavedMessageCountRef = useRef<number>(0)
+  const wasLoadingRef = useRef<boolean>(false)
+  
+  useEffect(() => {
+    // Track when loading changes from true to false (AI response completed)
+    if (wasLoadingRef.current && !isLoading) {
+      // Loading just finished - this is when we should save
+      if (currentChatId && messages.length > 0 && address) {
+        const lastMessage = messages[messages.length - 1]
+        if (lastMessage && lastMessage.role === 'assistant' && lastMessage.content.trim()) {
+          // Only save if we have new messages (not just switching chats)
+          if (messages.length > lastSavedMessageCountRef.current) {
+            // Save to Irys after AI response
+            const timeoutId = setTimeout(() => {
+              console.log('💾 Auto-saving to Irys after AI response:', { chatId: currentChatId, messageCount: messages.length })
+              saveChatToIrys(currentChatId, messages)
+              lastSavedMessageCountRef.current = messages.length
+            }, 1000) // Wait 1 second to ensure the response is complete
+            return () => clearTimeout(timeoutId)
+          }
+        }
+      }
+    }
+    wasLoadingRef.current = isLoading
+  }, [isLoading, currentChatId, messages, address, saveChatToIrys])
+
+  // Set saved message count when switching chats (don't reset to 0)
+  useEffect(() => {
+    if (currentChatId && messages.length > 0) {
+      lastSavedMessageCountRef.current = messages.length
+      console.log('🔄 Switched to chat:', { chatId: currentChatId, messageCount: messages.length, savedCount: lastSavedMessageCountRef.current })
+    }
+  }, [currentChatId])
 
 
 
@@ -228,20 +263,6 @@ export function ChatInterface() {
       setIsLoading(false)
       // Ensure scroll to bottom after message is sent
       scrollToBottom()
-      // Save messages after sending will be handled by useEffect
-      
-      // Save chat to Irys after assistant response is complete
-      if (currentChatId) {
-        // Use setTimeout to ensure state has been updated
-        setTimeout(() => {
-          setMessages(currentMessages => {
-            if (currentMessages.length > 0) {
-              saveChatToIrys(currentChatId, currentMessages)
-            }
-            return currentMessages
-          })
-        }, 100)
-      }
     }
   }
 

@@ -6,15 +6,27 @@ export async function GET(request: NextRequest) {
     const userAddress = searchParams.get('userAddress');
 
     if (!userAddress) {
-      return NextResponse.json(
-        { error: 'Missing userAddress parameter' },
-        { status: 400 }
-      );
+      return NextResponse.json({ error: 'User address is required' }, { status: 400 });
     }
 
     console.log('🔍 Loading chats for user:', userAddress);
 
-    // GraphQL query to find ALL chat transactions by this user
+    // Get server wallet address from environment
+    const serverWalletKey = process.env.SERVER_WALLET_PRIVATE_KEY;
+    if (!serverWalletKey) {
+      return NextResponse.json({ error: 'Server wallet not configured' }, { status: 500 });
+    }
+
+    // Import Irys to get server wallet address
+    const { Uploader } = await import('@irys/upload');
+    const { Ethereum } = await import('@irys/upload-ethereum');
+    const irysUploader = await Uploader(Ethereum).withWallet(serverWalletKey);
+    const serverWalletAddress = irysUploader.address;
+
+    console.log('🔑 Server wallet address:', serverWalletAddress);
+    console.log('👤 Searching for user:', userAddress);
+
+    // GraphQL query to find chat transactions by server wallet with user address filter
     const query = `
       query getUserChats($owner: String!) {
         transactions(
@@ -22,8 +34,9 @@ export async function GET(request: NextRequest) {
           tags: [
             { name: "App-Name", values: ["ChatAppChats"] }
             { name: "Type", values: ["chat-session"] }
+            { name: "User-Address", values: ["${userAddress}"] }
           ]
-          order: DESC
+          first: 100
         ) {
           edges {
             node {
@@ -40,7 +53,7 @@ export async function GET(request: NextRequest) {
     `;
 
     const variables = {
-      owner: userAddress
+      owner: serverWalletAddress
     };
 
     console.log('📡 Executing GraphQL query:', { query: query.replace(/\s+/g, ' ').trim(), variables });
