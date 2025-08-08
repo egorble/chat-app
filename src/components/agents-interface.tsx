@@ -25,7 +25,7 @@ export function AgentsInterface() {
         {/* My Agents Section */}
         <div>
           <h2 className="text-xl font-semibold text-gray-900 mb-6">My Created Agents</h2>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
             {isLoading ? (
               <div className="col-span-full text-center py-8 text-gray-500">
                 <Loader2 className="w-12 h-12 mx-auto mb-4 opacity-50 animate-spin" />
@@ -42,45 +42,49 @@ export function AgentsInterface() {
                 return (
                   <Card key={agent.id} className="border border-gray-200 hover:border-gray-300 transition-colors">
                     <CardHeader className="pb-3">
-                      <div className="flex items-center justify-between">
-                        <div className="flex items-center space-x-2">
-                          <div className="w-8 h-8 bg-gradient-to-br from-blue-500 to-purple-600 rounded-full flex items-center justify-center">
-                            <Bot className="w-4 h-4 text-white" />
+                      <div className="flex items-start justify-between mb-2">
+                        <div className="flex items-center space-x-3">
+                          <div className="w-10 h-10 bg-gradient-to-br from-blue-500 to-purple-600 rounded-full flex items-center justify-center flex-shrink-0">
+                            <Bot className="w-5 h-5 text-white" />
                           </div>
-                          <CardTitle className="text-sm font-medium">{agent.name}</CardTitle>
+                          <div className="min-w-0 flex-1">
+                            <CardTitle className="text-base font-semibold text-gray-900 truncate">{agent.name}</CardTitle>
+                            <div className="flex items-center gap-2 mt-1">
+                              <Badge variant="secondary" className="text-xs">@{agentSlug}</Badge>
+                              {agent.irysId && (
+                                <Badge variant="outline" className="text-xs text-green-600 border-green-200">
+                                  ⛓️ Blockchain
+                                </Badge>
+                              )}
+                            </div>
+                          </div>
                         </div>
-                        <div className="flex items-center space-x-2">
-                          <Badge variant="secondary" className="text-xs">@{agentSlug}</Badge>
-                          {agent.irysId && (
-                            <Badge variant="outline" className="text-xs text-green-600 border-green-200">
-                              ⛓️ Blockchain
-                            </Badge>
-                          )}
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={async () => {
-                              try {
-                                await removeAgent(agent.id)
-                              } catch (error) {
-                                console.error('Failed to remove agent:', error)
-                                alert('Failed to remove agent. Please make sure your wallet is connected.')
-                              }
-                            }}
-                            className="h-6 w-6 p-0 text-gray-400 hover:text-red-500"
-                          >
-                            <Trash2 className="w-3 h-3" />
-                          </Button>
-                        </div>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={async () => {
+                            try {
+                              await removeAgent(agent.id)
+                            } catch (error) {
+                              console.error('Failed to remove agent:', error)
+                              alert('Failed to remove agent. Please make sure your wallet is connected.')
+                            }
+                          }}
+                          className="h-8 w-8 p-0 text-gray-400 hover:text-red-500 flex-shrink-0"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </Button>
                       </div>
-                      <CardDescription className="text-xs text-gray-600">
+                      <CardDescription className="text-sm text-gray-600 mt-1">
                         {agent.description || 'Custom AI agent'}
                       </CardDescription>
                     </CardHeader>
                     <CardContent className="pt-0">
-                      <div className="text-xs text-gray-500 bg-gray-50 p-2 rounded text-left">
-                        <span className="font-medium">System Prompt:</span>
-                        <p className="mt-1 line-clamp-2">{agent.systemPrompt}</p>
+                      <div className="text-sm text-gray-700 bg-gray-50 p-3 rounded-md border">
+                        <div className="flex items-center gap-2 mb-2">
+                          <span className="font-medium text-gray-900">System Prompt:</span>
+                        </div>
+                        <p className="text-gray-600 leading-relaxed line-clamp-3">{agent.systemPrompt}</p>
                       </div>
                     </CardContent>
                   </Card>

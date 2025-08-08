@@ -12,7 +12,7 @@ const openai = new OpenAI({
 
 export async function POST(request: NextRequest) {
   try {
-    const { message, systemPrompt } = await request.json();
+    const { message, systemPrompt, conversationHistory } = await request.json();
 
     if (!message) {
       return NextResponse.json(
@@ -21,7 +21,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Build messages array with optional system prompt
+    // Build messages array with optional system prompt and conversation history
     const messages: any[] = [];
     
     if (systemPrompt) {
@@ -31,6 +31,17 @@ export async function POST(request: NextRequest) {
       });
     }
     
+    // Add conversation history if provided (excluding the current message)
+    if (conversationHistory && Array.isArray(conversationHistory)) {
+      // Limit conversation history to last 20 messages to avoid token limits
+      const recentHistory = conversationHistory.slice(-20);
+      messages.push(...recentHistory.map(msg => ({
+        role: msg.role,
+        content: msg.content
+      })));
+    }
+    
+    // Add the current user message
     messages.push({
       role: 'user',
       content: message,

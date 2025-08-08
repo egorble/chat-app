@@ -214,7 +214,8 @@ export function ChatInterface() {
         },
         body: JSON.stringify({ 
           message: userMessage,
-          systemPrompt: agentToUse?.systemPrompt 
+          systemPrompt: agentToUse?.systemPrompt,
+          conversationHistory: messages // Pass current conversation history for context
         }),
       })
 
