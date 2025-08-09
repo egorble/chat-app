@@ -18,26 +18,26 @@ export function IrysSaveIndicator({ status, className, size = 'sm' }: IrysSaveIn
         return {
           icon: CheckCircle,
           color: 'text-green-500',
-          title: 'Збережено в Irys'
+          title: 'Your conversation saved on Irys'
         }
       case 'pending':
         return {
           icon: Clock,
           color: 'text-yellow-500 animate-pulse',
-          title: 'Збереження в процесі...'
+          title: 'Saving in progress...'
         }
       case 'error':
         return {
           icon: AlertCircle,
           color: 'text-red-500',
-          title: 'Помилка збереження'
+          title: 'Save error'
         }
       case 'not_saved':
       default:
         return {
           icon: Circle,
           color: 'text-red-500',
-          title: 'Не збережено'
+          title: 'Not saved'
         }
     }
   }

@@ -122,7 +122,7 @@ class IrysManager {
       console.log('✅ Optimized agent save successful:', result);
       
       return {
-        irysId: result.irysId,
+        irysId: result.transactionId,
         mutableUrl: result.mutableUrl,
         isUpdate: result.isUpdate,
         rootTxId: result.rootTxId

@@ -1,11 +1,13 @@
 "use client"
 
+import { useState, useMemo, useEffect, useRef } from "react"
 import {
   MessageSquare,
   Bot,
   Search,
   MoreHorizontal,
-  Trash2
+  Trash2,
+  X
 } from "lucide-react"
 import Link from "next/link"
 import { usePathname } from "next/navigation"
@@ -33,6 +35,44 @@ export function AppSidebar() {
   const pathname = usePathname()
   const { chatSessions, currentChatId, selectChat, deleteChatSession } = useChatHistory()
   const { address, isConnected } = useAccount()
+  const [searchQuery, setSearchQuery] = useState("")
+  const searchInputRef = useRef<HTMLInputElement>(null)
+  
+  // Filter chats by search query
+  const filteredChatSessions = useMemo(() => {
+    if (!searchQuery.trim()) {
+      return chatSessions
+    }
+    
+    const query = searchQuery.toLowerCase().trim()
+    return chatSessions.filter(chat => {
+      // Search by chat title
+      const titleMatch = chat.title.toLowerCase().includes(query)
+      
+      // Search by last message
+      const lastMessageMatch = chat.lastMessage?.toLowerCase().includes(query)
+      
+      // Search by message content
+      const messagesMatch = chat.messages?.some(message => 
+        message.content.toLowerCase().includes(query)
+      )
+      
+      return titleMatch || lastMessageMatch || messagesMatch
+    })
+  }, [chatSessions, searchQuery])
+  
+  // Handle Ctrl+K keyboard shortcut
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.ctrlKey && event.key === 'k') {
+        event.preventDefault()
+        searchInputRef.current?.focus()
+      }
+    }
+    
+    document.addEventListener('keydown', handleKeyDown)
+    return () => document.removeEventListener('keydown', handleKeyDown)
+  }, [])
   
   return (
     <Sidebar className="border-r border-gray-200">
@@ -149,27 +189,54 @@ export function AppSidebar() {
           <div className="relative mb-4">
             <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
             <Input 
-              placeholder="Search" 
-              className="pl-10 bg-gray-50 border-0 text-sm"
+              ref={searchInputRef}
+              placeholder="Search chats..." 
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="pl-10 pr-8 bg-gray-50 border-0 text-sm"
             />
-            <div className="absolute right-3 top-1/2 transform -translate-y-1/2 text-xs text-gray-400">
-              Ctrl+K
-            </div>
+            {searchQuery && (
+              <Button
+                onClick={() => setSearchQuery("")}
+                size="sm"
+                variant="ghost"
+                className="absolute right-1 top-1/2 transform -translate-y-1/2 h-6 w-6 p-0 hover:bg-gray-200"
+              >
+                <X className="h-3 w-3" />
+              </Button>
+            )}
+            {!searchQuery && (
+              <div className="absolute right-3 top-1/2 transform -translate-y-1/2 text-xs text-gray-400">
+                Ctrl+K
+              </div>
+            )}
           </div>
           
           {/* Chat History Section */}
           <SidebarGroup>
             <SidebarGroupLabel className="text-xs font-medium text-gray-500 mb-2">
-              Chat History
+              Chat History {searchQuery && `(${filteredChatSessions.length} found)`}
             </SidebarGroupLabel>
             <SidebarGroupContent>
               <SidebarMenu>
-                {chatSessions.length === 0 ? (
-                  <div className="text-xs text-gray-400 px-3 py-2">
-                    No chat history yet
+                {filteredChatSessions.length === 0 ? (
+                  <div className="p-4 text-center text-gray-500 text-sm">
+                    {searchQuery ? (
+                       <>
+                         <Search className="h-8 w-8 mx-auto mb-2 opacity-50" />
+                         <p>Nothing found for "{searchQuery}"</p>
+                         <p className="text-xs mt-1">Try a different search query</p>
+                       </>
+                     ) : (
+                       <>
+                         <MessageSquare className="h-8 w-8 mx-auto mb-2 opacity-50" />
+                         <p>No saved chats</p>
+                         <p className="text-xs mt-1">Start a new chat to see it here</p>
+                       </>
+                     )}
                   </div>
                 ) : (
-                  chatSessions.map((chat) => (
+                  filteredChatSessions.map((chat) => (
                     <SidebarMenuItem key={chat.id}>
                       <div className="flex items-center w-full group">
                         <SidebarMenuButton
@@ -190,7 +257,7 @@ export function AppSidebar() {
                         <Button
                           onClick={(e) => {
                             e.stopPropagation()
-                            if (confirm(`Ви впевнені, що хочете видалити чат "${chat.title}"?\n\nЦя дія не може бути скасована.`)) {
+                            if (confirm(`Are you sure you want to delete the chat "${chat.title}"?\n\nThis action cannot be undone.`)) {
                               deleteChatSession(chat.id)
                             }
                           }}

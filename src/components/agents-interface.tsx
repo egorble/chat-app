@@ -52,9 +52,18 @@ export function AgentsInterface() {
                             <div className="flex items-center gap-2 mt-1">
                               <Badge variant="secondary" className="text-xs">@{agentSlug}</Badge>
                               {agent.irysId && (
-                                <Badge variant="outline" className="text-xs text-green-600 border-green-200">
-                                  ⛓️ Blockchain
-                                </Badge>
+                                <a 
+                                  href={`https://gateway.irys.xyz/${agent.irysId}`}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="inline-flex items-center gap-1.5 px-2 py-1 text-xs font-medium text-orange-600 bg-orange-50 border border-orange-200 rounded-md hover:bg-orange-100 hover:text-orange-700 transition-colors duration-200"
+                                  title="View agent on Irys blockchain"
+                                >
+                                  <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+                                  </svg>
+                                  View on Irys
+                                </a>
                               )}
                             </div>
                           </div>

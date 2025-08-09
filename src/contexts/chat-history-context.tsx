@@ -19,6 +19,7 @@ interface ChatSession {
   deletedAt?: Date
   irysSaveStatus?: 'saved' | 'pending' | 'error' | 'not_saved'
   lastSavedAt?: Date
+  irysId?: string
 }
 
 interface ChatHistoryContextType {
@@ -146,7 +147,7 @@ export function ChatHistoryProvider({ children }: { children: ReactNode }) {
       return
     }
 
-    // Для видалених чатів дозволяємо збереження навіть без повідомлень
+    // For deleted chats, allow saving even without messages
     if (!chatId || (!isDeleted && (!Array.isArray(messages) || messages.length === 0))) {
       console.warn('Invalid chat data for Irys save:', { chatId, messages, isDeleted })
       return
@@ -203,19 +204,23 @@ export function ChatHistoryProvider({ children }: { children: ReactNode }) {
 
       const result = await response.json()
       console.log('✅ Chat saved to Irys successfully:', result)
+      console.log('🔄 Updating irysId for chat:', chatId, 'with irysId:', result.irysId)
 
-      // Set status to saved on success
-      setChatSessions(prev => 
-        prev.map(c => 
+      // Set status to saved on success and update irysId
+      setChatSessions(prev => {
+        const updated = prev.map(c => 
           c.id === chatId 
             ? { 
                 ...c, 
                 irysSaveStatus: 'saved' as const,
-                lastSavedAt: new Date()
+                lastSavedAt: new Date(),
+                irysId: result.irysId // Update with the correct Irys ID from API response
               }
             : c
         )
-      )
+        console.log('📝 Updated chatSessions:', updated.find(c => c.id === chatId))
+        return updated
+      })
 
     } catch (error) {
       console.error('❌ Error saving chat to Irys:', error)
@@ -327,7 +332,8 @@ export function ChatHistoryProvider({ children }: { children: ReactNode }) {
               isDeleted: false, // Explicitly set to false for active chats
               deletedAt: undefined, // Clear any deletion timestamp
               irysSaveStatus: 'saved' as const, // Loaded chats are already saved
-              lastSavedAt: new Date(chatData.createdAt) // Use creation date as last saved
+              lastSavedAt: new Date(chatData.createdAt), // Use creation date as last saved
+              irysId: chatData.irysId // Store Irys transaction ID for linking
             }
             
             console.log('✅ Processed active chat:', session.id, session.title)

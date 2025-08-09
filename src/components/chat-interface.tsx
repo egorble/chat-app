@@ -58,6 +58,7 @@ export function ChatInterface() {
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const { agents, getAgent } = useAgents()
   const {
+    chatSessions,
     currentChatId,
     createNewChat,
     updateChatTitle,
@@ -70,6 +71,22 @@ export function ChatInterface() {
     markChatAsInitialized
   } = useChatHistory()
   const { address, isConnected } = useAccount()
+  
+  // Get current chat session for Irys link
+  const currentChat = chatSessions.find(chat => chat.id === currentChatId)
+  
+  // Debug log for currentChat and irysId
+  useEffect(() => {
+    console.log('🔍 Current chat debug:', {
+      currentChatId,
+      currentChat: currentChat ? {
+        id: currentChat.id,
+        title: currentChat.title,
+        irysId: currentChat.irysId,
+        irysSaveStatus: currentChat.irysSaveStatus
+      } : null
+    })
+  }, [currentChatId, currentChat])
 
   const scrollToBottom = () => {
     setTimeout(() => {
@@ -423,7 +440,7 @@ export function ChatInterface() {
               setMessages(prev => {
                 const newMessages = [...prev]
                 if (newMessages.length > assistantMessageIndex) {
-                  newMessages[assistantMessageIndex].content = 'Вибачте, я не зміг згенерувати відповідь. Спробуйте ще раз.'
+                  newMessages[assistantMessageIndex].content = 'Sorry, I couldn\'t generate a response. Please try again.'
                 }
                 return newMessages
               })
@@ -438,7 +455,7 @@ export function ChatInterface() {
           setMessages(prev => {
             const newMessages = [...prev]
             if (newMessages.length > assistantMessageIndex) {
-              newMessages[assistantMessageIndex].content = 'Вибачте, я не зміг згенерувати відповідь. Спробуйте ще раз.'
+              newMessages[assistantMessageIndex].content = 'Sorry, I couldn\'t generate a response. Please try again.'
             }
             return newMessages
           })
@@ -532,7 +549,24 @@ export function ChatInterface() {
         {/* Header with new chat button when messages exist */}
         {messages.length > 0 && (
           <div className="flex items-center justify-between p-4 border-b border-gray-200">
-            <h2 className="text-lg font-medium text-gray-800">Чат</h2>
+            <h2 className="text-lg font-medium text-gray-800">Chat</h2>
+            
+            {/* Irys link in the middle */}
+            {currentChat?.irysId && (
+              <a 
+                href={`https://gateway.irys.xyz/${currentChat.irysId}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-orange-600 bg-orange-50 border border-orange-200 rounded-md hover:bg-orange-100 hover:text-orange-700 transition-colors duration-200"
+                title="View chat on Irys blockchain"
+              >
+                <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+                </svg>
+                View on Irys
+              </a>
+            )}
+            
             <Button 
               onClick={handleNewChat}
               variant="outline" 
