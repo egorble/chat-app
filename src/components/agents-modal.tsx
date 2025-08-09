@@ -33,7 +33,7 @@ export function AgentsModal({ open, onOpenChange, onSelectAgent }: AgentsModalPr
     <>
       <Dialog open={open} onOpenChange={onOpenChange}>
         <DialogContent className="max-w-2xl max-h-[80vh] p-0">
-          <DialogHeader className="p-6 pb-4">
+          <DialogHeader className="p-6 pb-4 pr-16">
             <div className="flex items-center justify-between">
               <DialogTitle className="text-lg font-semibold">Select Agent</DialogTitle>
               <Button

@@ -4,7 +4,6 @@ import {
   MessageSquare,
   Bot,
   Search,
-  Plus,
   MoreHorizontal,
   Trash2
 } from "lucide-react"
@@ -28,15 +27,12 @@ import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { useChatHistory } from "@/contexts/chat-history-context"
+import { IrysSaveIndicator } from "@/components/irys-save-indicator"
 
 export function AppSidebar() {
   const pathname = usePathname()
-  const { chatSessions, currentChatId, createNewChat, selectChat, deleteChatSession } = useChatHistory()
+  const { chatSessions, currentChatId, selectChat, deleteChatSession } = useChatHistory()
   const { address, isConnected } = useAccount()
-  
-  const handleNewChat = () => {
-    createNewChat()
-  }
   
   return (
     <Sidebar className="border-r border-gray-200">
@@ -108,14 +104,6 @@ export function AppSidebar() {
               }}
             </ConnectButton.Custom>
           </div>
-          <Button 
-            onClick={handleNewChat}
-            size="sm" 
-            className="ml-auto h-6 px-2 py-1 text-xs bg-gray-100 hover:bg-gray-200 text-gray-700 flex items-center gap-1 rounded-md border"
-          >
-            <Plus className="h-3 w-3" />
-            <span>New</span>
-          </Button>
         </div>
       </SidebarHeader>
       
@@ -192,6 +180,11 @@ export function AppSidebar() {
                           <div className="flex items-center gap-2 flex-1 min-w-0">
                             <MessageSquare className="h-3 w-3 text-gray-400 flex-shrink-0" />
                             <span className="truncate text-xs">{chat.title}</span>
+                            <IrysSaveIndicator 
+                              status={chat.irysSaveStatus || 'not_saved'} 
+                              className="ml-auto flex-shrink-0"
+                              size="sm"
+                            />
                           </div>
                         </SidebarMenuButton>
                         <Button

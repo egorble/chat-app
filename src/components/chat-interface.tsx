@@ -1,12 +1,14 @@
 "use client"
 
 import { useState, useEffect, useRef } from "react"
-import { Send, Paperclip, Search, Lightbulb, Wrench, Mic, MoreHorizontal, Moon, Sun, Bot } from "lucide-react"
+import { Send, Lightbulb, Mic, MoreHorizontal, Moon, Sun, Bot } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
+import { Textarea } from "@/components/ui/textarea"
 import { Badge } from "@/components/ui/badge"
 import ReactMarkdown from "react-markdown"
 import rehypeRaw from "rehype-raw"
+import remarkGfm from "remark-gfm"
 import { Prism as SyntaxHighlighter } from "react-syntax-highlighter"
 import { tomorrow } from "react-syntax-highlighter/dist/esm/styles/prism"
 import { useAgents } from "@/contexts/agents-context"
@@ -53,8 +55,20 @@ export function ChatInterface() {
   const [selectedAgent, setSelectedAgent] = useState<string | null>(null)
   const [showAgentsModal, setShowAgentsModal] = useState(false)
   const messagesEndRef = useRef<HTMLDivElement>(null)
+  const textareaRef = useRef<HTMLTextAreaElement>(null)
   const { agents, getAgent } = useAgents()
-  const { currentChatId, updateChatTitle, saveMessagesToChat, getChatMessages, createNewChat, saveChatToIrys, loadChatsFromIrys } = useChatHistory()
+  const {
+    currentChatId,
+    createNewChat,
+    updateChatTitle,
+    saveMessagesToChat,
+    getChatMessages,
+    saveChatToIrys,
+    loadChatsFromIrys,
+    clearCurrentChat,
+    isNewChatCreated,
+    markChatAsInitialized
+  } = useChatHistory()
   const { address, isConnected } = useAccount()
 
   const scrollToBottom = () => {
@@ -70,44 +84,87 @@ export function ChatInterface() {
     scrollToBottom()
   }, [messages])
 
-  // Save current messages when switching chats
+  // Enhanced chat state management with better isolation
   const prevChatIdRef = useRef<string | null>(null)
   const prevMessagesRef = useRef<Message[]>([])
+  const chatStateRef = useRef<{ [chatId: string]: Message[] }>({})
+  const isInitializingRef = useRef<boolean>(false)
   
   useEffect(() => {
-    // Save messages from previous chat when switching (async to avoid setState during render)
-    if (prevChatIdRef.current && prevChatIdRef.current !== currentChatId && prevMessagesRef.current.length > 0) {
-      // Use setTimeout to defer the setState call and avoid "setState during render" error
+    // Prevent recursive calls during initialization
+    if (isInitializingRef.current) {
+      console.log('⏳ Skipping useEffect - initialization in progress')
+      return
+    }
+
+    const previousChatId = prevChatIdRef.current
+    const currentMessages = messages
+    
+    console.log('🔄 Chat switching effect triggered:', {
+      previousChatId,
+      currentChatId,
+      currentMessagesCount: currentMessages.length,
+      isNewChatCreated,
+      messagesInState: messages.length
+    })
+
+    // Save messages from previous chat if switching away from it
+    if (previousChatId && previousChatId !== currentChatId && currentMessages.length > 0) {
+      console.log('💾 Saving messages from previous chat:', previousChatId, 'messages:', currentMessages.length)
+      
+      // Store in local state cache
+      chatStateRef.current[previousChatId] = [...currentMessages]
+      
+      // Save to context (async to avoid setState during render)
       setTimeout(() => {
-        saveMessagesToChat(prevChatIdRef.current!, prevMessagesRef.current)
+        saveMessagesToChat(previousChatId, currentMessages)
       }, 0)
     }
-    
-    // Load messages for new chat (only if we're actually switching chats)
-    if (currentChatId && prevChatIdRef.current !== currentChatId) {
-      const chatMessages = getChatMessages(currentChatId)
-      console.log(`🔄 Loading messages for chat ${currentChatId}:`, chatMessages.length, 'messages')
-      console.log('🔄 Previous chat was:', prevChatIdRef.current)
-      console.log('🔄 Current messages before switch:', messages.length)
+
+    // Handle chat switching logic
+    if (currentChatId !== previousChatId) {
+      isInitializingRef.current = true
       
-      // Only load messages if the chat actually has saved messages
-      // This prevents clearing messages for newly created chats
-      if (chatMessages.length > 0 || messages.length === 0) {
-        setMessages(chatMessages)
-        prevMessagesRef.current = chatMessages
-        console.log('🔄 Messages after switch:', chatMessages.length)
+      if (currentChatId) {
+        // Switching to a specific chat
+        if (isNewChatCreated) {
+          // This is a brand new chat - always start with empty messages
+          console.log('🆕 Initializing new chat with empty messages:', currentChatId)
+          setMessages([])
+          prevMessagesRef.current = []
+          chatStateRef.current[currentChatId] = []
+        } else {
+          // Switching to existing chat - load its messages
+          const savedMessages = getChatMessages(currentChatId)
+          const cachedMessages = chatStateRef.current[currentChatId] || []
+          
+          // Use cached messages if available and more recent, otherwise use saved
+          const messagesToLoad = cachedMessages.length >= savedMessages.length ? cachedMessages : savedMessages
+          
+          console.log('📥 Loading messages for existing chat:', currentChatId, 'messages:', messagesToLoad.length)
+          setMessages([...messagesToLoad]) // Create new array to ensure re-render
+          prevMessagesRef.current = [...messagesToLoad]
+          chatStateRef.current[currentChatId] = [...messagesToLoad]
+        }
       } else {
-        console.log('🔄 Keeping current messages for new chat')
+        // No current chat - clear everything
+        console.log('🧹 No current chat - clearing all messages')
+        setMessages([])
+        prevMessagesRef.current = []
       }
-    } else if (!currentChatId && prevChatIdRef.current !== null) {
-      // Only clear messages if we were previously in a chat and now have no chat
-      console.log('🧹 Clearing messages - no current chat')
-      setMessages([])
-      prevMessagesRef.current = []
+      
+      // Update refs and reset initialization flag
+      setTimeout(() => {
+        prevChatIdRef.current = currentChatId
+        isInitializingRef.current = false
+        
+        // Mark new chat as initialized after first message load
+        if (currentChatId && isNewChatCreated) {
+          markChatAsInitialized(currentChatId)
+        }
+      }, 0)
     }
-    
-    prevChatIdRef.current = currentChatId
-  }, [currentChatId, saveMessagesToChat, getChatMessages])
+  }, [currentChatId, isNewChatCreated, saveMessagesToChat, getChatMessages, markChatAsInitialized])
 
   // Load chats from Irys when wallet is connected
   useEffect(() => {
@@ -198,45 +255,60 @@ export function ChatInterface() {
       }
     }
 
-    // Create new chat if none exists (before adding message to state)
+    // Create new chat if none exists
     let chatId = currentChatId
-    let isNewChat = false
+    let wasNewChatCreated = false
+    
     if (!chatId) {
+      console.log('🆕 No current chat - creating new one')
       chatId = createNewChat()
-      isNewChat = true
+      wasNewChatCreated = true
+      
+      // Wait for the new chat to be properly initialized
+      await new Promise(resolve => setTimeout(resolve, 50))
     }
     
-    // Update chat title if this is the first message and we have a chat
+    // Update chat title if this is the first message
     if (chatId && messages.length === 0) {
       const title = userMessage.length > 50 ? userMessage.substring(0, 50) + '...' : userMessage
       updateChatTitle(chatId, title)
     }
 
-    // Add user message to current messages
-    const newMessages = [...messages, { 
+    // Create new message
+    const userMessageObj = { 
       role: 'user' as const, 
       content: userMessage,
       agent: agentName 
-    }]
-    
-    // For new chats, set messages immediately to prevent clearing by useEffect
-    if (isNewChat) {
-      setMessages(newMessages)
-      // Also update the ref to prevent useEffect from clearing
-      prevMessagesRef.current = newMessages
-    } else {
-      setMessages(newMessages)
     }
     
-    // Immediately save the new messages to prevent loss during chat switching (async to avoid setState during render)
-    if (chatId) {
-      setTimeout(() => {
-        saveMessagesToChat(chatId, newMessages)
-        console.log('💾 Immediate save after user message:', { chatId, messageCount: newMessages.length })
-      }, 0)
-    }
+    // Add user message to current messages
+    const newMessages = [...messages, userMessageObj]
+    
+    console.log('📝 Adding user message:', {
+      chatId,
+      wasNewChatCreated,
+      previousMessageCount: messages.length,
+      newMessageCount: newMessages.length
+    })
+    
+    // Update messages state and cache
+    setMessages(newMessages)
+    prevMessagesRef.current = newMessages
+    chatStateRef.current[chatId] = newMessages
+    
+    // Save messages to context (async to avoid setState during render)
+    setTimeout(() => {
+      saveMessagesToChat(chatId, newMessages)
+      console.log('💾 Saved user message to context:', { chatId, messageCount: newMessages.length })
+    }, 0)
     
     setMessage('')
+    
+    // Reset textarea height
+    if (textareaRef.current) {
+      textareaRef.current.style.height = 'auto'
+    }
+    
     setIsLoading(true)
 
     try {
@@ -396,11 +468,16 @@ export function ChatInterface() {
         setTimeout(() => {
           // Get current messages and save them
           setMessages(currentMessages => {
-            // Save outside of setState to avoid render cycle issues
+            // Update cache and save to context
+            chatStateRef.current[chatId] = [...currentMessages]
+            prevMessagesRef.current = [...currentMessages]
+            
+            // Save to context (async to avoid render cycle issues)
             setTimeout(() => {
               saveMessagesToChat(chatId, currentMessages)
-              console.log('💾 Immediate save after AI response:', { chatId, messageCount: currentMessages.length })
+              console.log('💾 Saved AI response to context:', { chatId, messageCount: currentMessages.length })
             }, 0)
+            
             return currentMessages
           })
         }, 100)
@@ -411,9 +488,15 @@ export function ChatInterface() {
     }
   }
 
-  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleInputChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
     const value = e.target.value
     setMessage(value)
+    
+    // Auto-resize textarea
+    if (textareaRef.current) {
+      textareaRef.current.style.height = 'auto'
+      textareaRef.current.style.height = `${Math.min(textareaRef.current.scrollHeight, 128)}px`
+    }
   }
 
   const handleKeyPress = (e: React.KeyboardEvent) => {
@@ -423,10 +506,44 @@ export function ChatInterface() {
     }
   }
 
+  const handleNewChat = () => {
+    console.log('🆕 User requested new chat')
+    
+    // Save current messages if there are any
+    if (currentChatId && messages.length > 0) {
+      chatStateRef.current[currentChatId] = [...messages]
+      saveMessagesToChat(currentChatId, messages)
+    }
+    
+    // Create new chat
+    const newChatId = createNewChat()
+    console.log('✅ Created new chat:', newChatId)
+    
+    // Clear current messages immediately
+    setMessages([])
+    prevMessagesRef.current = []
+    chatStateRef.current[newChatId] = []
+  }
+
   return (
     <div className="flex-1 flex flex-col h-screen bg-white">
       {/* Main chat area */}
       <div className="flex-1 flex flex-col min-h-0">
+        {/* Header with new chat button when messages exist */}
+        {messages.length > 0 && (
+          <div className="flex items-center justify-between p-4 border-b border-gray-200">
+            <h2 className="text-lg font-medium text-gray-800">Чат</h2>
+            <Button 
+              onClick={handleNewChat}
+              variant="outline" 
+              size="sm"
+              className="text-orange-600 border-orange-200 hover:bg-orange-50"
+            >
+              New Chat
+            </Button>
+          </div>
+        )}
+        
         {/* Messages area */}
         {messages.length > 0 ? (
           <div className="flex-1 overflow-y-auto p-4 space-y-4">
@@ -444,8 +561,9 @@ export function ChatInterface() {
                     </div>
                   )}
                   {msg.role === 'assistant' ? (
-                       <div className="prose prose-sm max-w-none prose-headings:text-gray-800 prose-p:text-gray-700 prose-strong:text-gray-800 prose-blockquote:border-l-4 prose-blockquote:border-gray-300 prose-blockquote:pl-4 prose-ul:list-disc prose-ol:list-decimal">
+                       <div className="prose prose-sm max-w-none prose-headings:text-gray-800 prose-p:text-gray-700 prose-strong:text-gray-800 prose-blockquote:border-l-4 prose-blockquote:border-gray-300 prose-blockquote:pl-4 prose-ul:list-disc prose-ol:list-decimal prose-table:table-auto prose-th:border prose-th:border-gray-300 prose-td:border prose-td:border-gray-300">
                          <ReactMarkdown 
+                           remarkPlugins={[remarkGfm]}
                            rehypePlugins={[rehypeRaw]}
                            components={{
                               code({ node, inline, className, children, ...props }: any) {
@@ -471,6 +589,38 @@ export function ChatInterface() {
                               },
                               p({ node, children, ...props }: any) {
                                 return <p className="mb-2 last:mb-0" {...props}>{children}</p>;
+                              },
+                              table({ node, children, ...props }: any) {
+                                return (
+                                  <div className="overflow-x-auto my-4">
+                                    <table className="min-w-full border-collapse border border-gray-300 bg-white" {...props}>
+                                      {children}
+                                    </table>
+                                  </div>
+                                );
+                              },
+                              thead({ node, children, ...props }: any) {
+                                return <thead className="bg-gray-50" {...props}>{children}</thead>;
+                              },
+                              tbody({ node, children, ...props }: any) {
+                                return <tbody {...props}>{children}</tbody>;
+                              },
+                              tr({ node, children, ...props }: any) {
+                                return <tr className="border-b border-gray-200 hover:bg-gray-50" {...props}>{children}</tr>;
+                              },
+                              th({ node, children, ...props }: any) {
+                                return (
+                                  <th className="border border-gray-300 px-4 py-2 text-left font-semibold text-gray-900 bg-gray-100" {...props}>
+                                    {children}
+                                  </th>
+                                );
+                              },
+                              td({ node, children, ...props }: any) {
+                                return (
+                                  <td className="border border-gray-300 px-4 py-2 text-gray-700" {...props}>
+                                    {children}
+                                  </td>
+                                );
                               },
                             }}
                          >
@@ -504,42 +654,21 @@ export function ChatInterface() {
               <h1 className="text-xl font-medium text-gray-600 mb-2">
                 Ask Le Chat anything
               </h1>
+              <Button 
+                onClick={handleNewChat}
+                variant="outline" 
+                className="mt-4 text-orange-600 border-orange-200 hover:bg-orange-50"
+              >
+                New Chat
+              </Button>
             </div>
 
-            {/* Action buttons */}
-            <div className="flex items-center justify-center gap-4 mb-8">
-              <Button 
-                variant="outline" 
-                size="sm" 
-                className="flex items-center gap-2 px-4 py-2 text-sm"
-              >
-                <Paperclip className="h-4 w-4" />
-                Research
-              </Button>
-              
-              <Button 
-                variant="outline" 
-                size="sm" 
-                className="flex items-center gap-2 px-4 py-2 text-sm"
-              >
-                <Search className="h-4 w-4" />
-                Think
-              </Button>
-              
-              <Button 
-                variant="outline" 
-                size="sm" 
-                className="flex items-center gap-2 px-4 py-2 text-sm"
-              >
-                <Wrench className="h-4 w-4" />
-                Tools
-              </Button>
-            </div>
+
           </div>
         )}
 
         {/* Input area - always at bottom */}
-        <div className="p-4 border-t border-gray-200 flex-shrink-0">
+        <div className="p-4 flex-shrink-0">
           <div className="w-full max-w-3xl mx-auto">
             <div className="relative">
               <div className="flex items-center gap-2 p-3 border border-gray-200 rounded-lg bg-white shadow-sm">
@@ -554,7 +683,7 @@ export function ChatInterface() {
                       {agents.find(a => a.id === selectedAgent)?.name || 'Ask'}
                     </>
                   ) : (
-                    'Ask'
+                    <Bot className="w-4 h-4" />
                   )}
                   <svg className="w-3 h-3 ml-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
@@ -562,13 +691,15 @@ export function ChatInterface() {
                 </Button>
                 
                 <div className="flex-1 relative">
-                  <Input
+                  <Textarea
+                    ref={textareaRef}
                     value={message}
                     onChange={handleInputChange}
                     onKeyPress={handleKeyPress}
                     placeholder={selectedAgent ? `Chatting with ${agents.find(a => a.id === selectedAgent)?.name}` : "Ask anything..."}
-                    className="border-0 focus-visible:ring-0 focus-visible:ring-offset-0 text-sm px-0"
+                    className="border-0 focus-visible:ring-0 focus-visible:ring-offset-0 text-sm px-0 min-h-[2.5rem] max-h-32 resize-none overflow-y-auto scrollbar-hide"
                     disabled={isLoading}
+                    rows={1}
                   />
                 </div>
                 

@@ -17,6 +17,8 @@ interface ChatSession {
   messages: Message[]
   isDeleted?: boolean
   deletedAt?: Date
+  irysSaveStatus?: 'saved' | 'pending' | 'error' | 'not_saved'
+  lastSavedAt?: Date
 }
 
 interface ChatHistoryContextType {
@@ -30,6 +32,9 @@ interface ChatHistoryContextType {
   getChatMessages: (chatId: string) => Message[]
   saveChatToIrys: (chatId: string, messages: Message[], isDeleted?: boolean) => Promise<void>
   loadChatsFromIrys: () => Promise<void>
+  clearCurrentChat: () => void
+  isNewChatCreated: boolean
+  markChatAsInitialized: (chatId: string) => void
 }
 
 const ChatHistoryContext = createContext<ChatHistoryContextType | undefined>(undefined)
@@ -37,25 +42,44 @@ const ChatHistoryContext = createContext<ChatHistoryContextType | undefined>(und
 export function ChatHistoryProvider({ children }: { children: ReactNode }) {
   const [chatSessions, setChatSessions] = useState<ChatSession[]>([])
   const [currentChatId, setCurrentChatId] = useState<string | null>(null)
+  const [isNewChatCreated, setIsNewChatCreated] = useState<boolean>(false)
+  const [initializedChats, setInitializedChats] = useState<Set<string>>(new Set())
   const { address } = useAccount()
 
   const createNewChat = useCallback((): string => {
-    const newChatId = `chat-${Date.now()}`
+    const newChatId = `chat-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`
     const newChat: ChatSession = {
       id: newChatId,
       title: 'New Chat',
       createdAt: new Date(),
-      messages: []
+      messages: [],
+      irysSaveStatus: 'saved' as const // New empty chat is considered saved
     }
     
+    console.log('🆕 Creating new chat:', newChatId)
     setChatSessions(prev => [newChat, ...prev])
     setCurrentChatId(newChatId)
+    setIsNewChatCreated(true)
+    
+    // Clear initialized chats set to ensure proper isolation
+    setInitializedChats(new Set())
+    
     return newChatId
   }, [])
 
   const selectChat = useCallback((chatId: string) => {
+    console.log('🔄 Selecting chat:', chatId, 'from current:', currentChatId)
+    
+    // Reset new chat flag when switching to existing chat
+    setIsNewChatCreated(false)
+    
+    // Mark previous chat as initialized if it exists
+    if (currentChatId) {
+      setInitializedChats(prev => new Set([...prev, currentChatId]))
+    }
+    
     setCurrentChatId(chatId)
-  }, [])
+  }, [currentChatId])
 
   const updateChatTitle = useCallback((chatId: string, title: string) => {
     setChatSessions(prev => 
@@ -75,11 +99,17 @@ export function ChatHistoryProvider({ children }: { children: ReactNode }) {
     setChatSessions(prev => {
       const updatedSessions = prev.map(chat => {
         if (chat.id === chatId) {
+          // Check if messages actually changed
+          const messagesChanged = chat.messages.length !== messages.length || 
+            JSON.stringify(chat.messages) !== JSON.stringify(messages)
+          
           // Create a deep copy to avoid reference issues
           return { 
             ...chat, 
             messages: [...messages],
-            lastMessage: messages.length > 0 ? messages[messages.length - 1].content : undefined
+            lastMessage: messages.length > 0 ? messages[messages.length - 1].content : undefined,
+            // Only mark as not_saved if messages actually changed
+            irysSaveStatus: messagesChanged ? 'not_saved' as const : chat.irysSaveStatus
           }
         }
         return chat
@@ -122,10 +152,27 @@ export function ChatHistoryProvider({ children }: { children: ReactNode }) {
       return
     }
 
+    // Set status to pending
+    setChatSessions(prev => 
+      prev.map(chat => 
+        chat.id === chatId 
+          ? { ...chat, irysSaveStatus: 'pending' as const }
+          : chat
+      )
+    )
+
     try {
       const chat = chatSessions.find(c => c.id === chatId)
       if (!chat) {
         console.warn('Chat not found for Irys save:', chatId)
+        // Set status to error if chat not found
+        setChatSessions(prev => 
+          prev.map(c => 
+            c.id === chatId 
+              ? { ...c, irysSaveStatus: 'error' as const }
+              : c
+          )
+        )
         return
       }
 
@@ -157,8 +204,30 @@ export function ChatHistoryProvider({ children }: { children: ReactNode }) {
       const result = await response.json()
       console.log('✅ Chat saved to Irys successfully:', result)
 
+      // Set status to saved on success
+      setChatSessions(prev => 
+        prev.map(c => 
+          c.id === chatId 
+            ? { 
+                ...c, 
+                irysSaveStatus: 'saved' as const,
+                lastSavedAt: new Date()
+              }
+            : c
+        )
+      )
+
     } catch (error) {
       console.error('❌ Error saving chat to Irys:', error)
+      
+      // Set status to error on failure
+      setChatSessions(prev => 
+        prev.map(c => 
+          c.id === chatId 
+            ? { ...c, irysSaveStatus: 'error' as const }
+            : c
+        )
+      )
     }
   }, [address, chatSessions])
 
@@ -256,7 +325,9 @@ export function ChatHistoryProvider({ children }: { children: ReactNode }) {
               lastMessage: messages.length > 0 ? messages[messages.length - 1].content : undefined,
               messages: messages,
               isDeleted: false, // Explicitly set to false for active chats
-              deletedAt: undefined // Clear any deletion timestamp
+              deletedAt: undefined, // Clear any deletion timestamp
+              irysSaveStatus: 'saved' as const, // Loaded chats are already saved
+              lastSavedAt: new Date(chatData.createdAt) // Use creation date as last saved
             }
             
             console.log('✅ Processed active chat:', session.id, session.title)
@@ -281,6 +352,19 @@ export function ChatHistoryProvider({ children }: { children: ReactNode }) {
     }
   }, [address])
 
+  const clearCurrentChat = useCallback(() => {
+    console.log('🧹 Clearing current chat')
+    setCurrentChatId(null)
+    setIsNewChatCreated(false)
+    setInitializedChats(new Set())
+  }, [])
+
+  const markChatAsInitialized = useCallback((chatId: string) => {
+    console.log('✅ Marking chat as initialized:', chatId)
+    setInitializedChats(prev => new Set([...prev, chatId]))
+    setIsNewChatCreated(false)
+  }, [])
+
   return (
     <ChatHistoryContext.Provider value={{
       chatSessions,
@@ -292,7 +376,10 @@ export function ChatHistoryProvider({ children }: { children: ReactNode }) {
       saveMessagesToChat,
       getChatMessages,
       saveChatToIrys,
-      loadChatsFromIrys
+      loadChatsFromIrys,
+      clearCurrentChat,
+      isNewChatCreated,
+      markChatAsInitialized
     }}>
       {children}
     </ChatHistoryContext.Provider>
