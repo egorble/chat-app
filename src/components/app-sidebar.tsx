@@ -10,7 +10,7 @@ import {
   X
 } from "lucide-react"
 import Link from "next/link"
-import { usePathname } from "next/navigation"
+import { usePathname, useRouter } from "next/navigation"
 import { ConnectButton } from '@rainbow-me/rainbowkit'
 import { useAccount } from 'wagmi'
 
@@ -33,6 +33,7 @@ import { IrysSaveIndicator } from "@/components/irys-save-indicator"
 
 export function AppSidebar() {
   const pathname = usePathname()
+  const router = useRouter()
   const { chatSessions, currentChatId, selectChat, deleteChatSession } = useChatHistory()
   const { address, isConnected } = useAccount()
   const [searchQuery, setSearchQuery] = useState("")
@@ -240,7 +241,13 @@ export function AppSidebar() {
                     <SidebarMenuItem key={chat.id}>
                       <div className="flex items-center w-full group">
                         <SidebarMenuButton
-                          onClick={() => selectChat(chat.id)}
+                          onClick={() => {
+                            selectChat(chat.id)
+                            // Navigate to chat page if not already there
+                            if (pathname !== '/') {
+                              router.push('/')
+                            }
+                          }}
                           isActive={currentChatId === chat.id}
                           className="flex-1 justify-start px-3 py-2 text-sm hover:bg-gray-100"
                         >
