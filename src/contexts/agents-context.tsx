@@ -1,8 +1,8 @@
 "use client"
 
 import { createContext, useContext, useState, useEffect, ReactNode } from "react"
-import { irysManager } from "@/utils/irys-manager"
 import { useAccount } from 'wagmi'
+import { FileAttachment, FileContext } from "@/types/file-types"
 
 export interface Agent {
   id: string
@@ -13,14 +13,18 @@ export interface Agent {
   irysId?: string
   deleted?: boolean
   deletedAt?: string
+  fileContext?: FileContext
 }
 
 interface AgentsContextType {
   agents: Agent[]
-  addAgent: (agent: Omit<Agent, 'id' | 'createdAt' | 'irysId' | 'deleted'>) => Promise<void>
+  addAgent: (agent: Omit<Agent, 'id' | 'createdAt' | 'irysId' | 'deleted'>, files?: FileAttachment[]) => Promise<void>
   removeAgent: (id: string) => Promise<void>
   getAgent: (id: string) => Agent | undefined
   loadUserAgents: () => Promise<void>
+  addFileToAgent: (agentId: string, file: FileAttachment) => Promise<void>
+  removeFileFromAgent: (agentId: string, fileId: string) => Promise<void>
+  getAgentFiles: (agentId: string) => FileAttachment[]
   isLoading: boolean
 }
 
@@ -50,20 +54,25 @@ export function AgentsProvider({ children }: { children: ReactNode }) {
       setIsLoading(true)
       console.log('🔄 Loading user agents with optimization...')
       
-      // Try optimized loading first, fallback to regular if needed
+      // Load agents using server API
       try {
-        const result = await irysManager.loadUserAgentsOptimized(address)
-        setAgents(result.agents)
+        const response = await fetch(`/api/load-agents-optimized?userAddress=${encodeURIComponent(address)}`);
         
-        console.log(`✅ Loaded ${result.agents.length} agents with optimization:`, {
-          mutableUrlUsage: result.optimization.mutableUrlUsage,
-          optimizationPercentage: result.optimization.optimizationPercentage
-        })
-      } catch (optimizedError) {
-        console.warn('⚠️ Optimized loading failed, falling back to regular method:', optimizedError)
-        const userAgents = await irysManager.loadUserAgents(address)
-        setAgents(userAgents)
-        console.log(`✅ Loaded ${userAgents.length} agents via fallback method`)
+        if (!response.ok) {
+          const errorData = await response.json();
+          throw new Error(errorData.error || 'Failed to load agents');
+        }
+        
+        const result = await response.json();
+        setAgents(result.agents);
+        
+        console.log(`✅ Loaded ${result.agents.length} agents successfully:`, {
+          mutableUrlUsage: result.optimization?.mutableUrlUsage,
+          optimizationPercentage: result.optimization?.optimizationPercentage
+        });
+      } catch (loadError) {
+        console.error('❌ Failed to load agents via API:', loadError);
+        throw loadError;
       }
     } catch (error) {
       console.error('❌ Failed to load user agents:', error)
@@ -74,12 +83,18 @@ export function AgentsProvider({ children }: { children: ReactNode }) {
     }
   }
 
-  const addAgent = async (agentData: Omit<Agent, 'id' | 'createdAt' | 'irysId' | 'deleted'>) => {
+  const addAgent = async (agentData: Omit<Agent, 'id' | 'createdAt' | 'irysId' | 'deleted'>, files?: FileAttachment[]) => {
     const newAgent: Agent = {
       ...agentData,
       id: crypto.randomUUID(),
       createdAt: new Date(),
-      deleted: false
+      deleted: false,
+      fileContext: files && files.length > 0 ? {
+        files: files,
+        totalSize: files.reduce((sum, file) => sum + file.size, 0),
+        maxFiles: 20,
+        allowedTypes: ['pdf', 'doc', 'docx', 'txt', 'md', 'csv', 'json', 'js', 'ts', 'py']
+      } : undefined
     }
 
     // Only save to Irys if wallet is connected
@@ -87,21 +102,35 @@ export function AgentsProvider({ children }: { children: ReactNode }) {
       try {
         console.log('💾 Saving agent with optimization:', newAgent.name)
         
-        // Try optimized saving first, fallback to regular if needed
+        // Save agent using server API
         try {
-          const result = await irysManager.saveAgentOptimized(newAgent, address)
-          newAgent.irysId = result.irysId
+          const response = await fetch('/api/save-agent-optimized', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              ...newAgent,
+              userAddress: address
+            })
+          });
           
-          console.log('✅ Agent saved with optimization:', {
-            irysId: result.irysId,
+          if (!response.ok) {
+            const errorData = await response.json();
+            throw new Error(errorData.error || 'Failed to save agent');
+          }
+          
+          const result = await response.json();
+          newAgent.irysId = result.transactionId;
+          
+          console.log('✅ Agent saved successfully:', {
+            irysId: result.transactionId,
             mutableUrl: result.mutableUrl,
             isUpdate: result.isUpdate
-          })
-        } catch (optimizedError) {
-          console.warn('⚠️ Optimized saving failed, falling back to regular method:', optimizedError)
-          const irysId = await irysManager.saveAgent(newAgent)
-          newAgent.irysId = irysId
-          console.log('✅ Agent saved via fallback method with ID:', irysId)
+          });
+        } catch (saveError) {
+          console.error('❌ Failed to save agent via API:', saveError);
+          throw saveError;
         }
         
       } catch (error: any) {
@@ -150,17 +179,32 @@ export function AgentsProvider({ children }: { children: ReactNode }) {
         try {
           console.log('💾 Updating agent deletion status with optimization')
           
-          // Try optimized saving first, fallback to regular if needed
+          // Save deleted agent using server API
           try {
-            const result = await irysManager.saveAgentOptimized(deletedAgent, address)
-            console.log('✅ Agent deletion status updated with optimization:', {
-              irysId: result.irysId,
+            const response = await fetch('/api/save-agent-optimized', {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+              },
+              body: JSON.stringify({
+                ...deletedAgent,
+                userAddress: address
+              })
+            });
+            
+            if (!response.ok) {
+              const errorData = await response.json();
+              throw new Error(errorData.error || 'Failed to save deleted agent');
+            }
+            
+            const result = await response.json();
+            console.log('✅ Agent deletion status updated successfully:', {
+              irysId: result.transactionId,
               mutableUrl: result.mutableUrl
-            })
-          } catch (optimizedError) {
-            console.warn('⚠️ Optimized deletion update failed, falling back to regular method:', optimizedError)
-            await irysManager.saveAgent(deletedAgent)
-            console.log('✅ Agent deletion status updated via fallback method')
+            });
+          } catch (deleteError) {
+            console.error('❌ Failed to update deletion status via API:', deleteError);
+            throw deleteError;
           }
         } catch (error) {
           console.error('❌ Failed to update deletion status:', error)
@@ -184,6 +228,115 @@ export function AgentsProvider({ children }: { children: ReactNode }) {
     return agents.find(agent => agent.id === id)
   }
 
+  const addFileToAgent = async (agentId: string, file: FileAttachment) => {
+    try {
+      const agent = agents.find(a => a.id === agentId)
+      if (!agent) {
+        throw new Error('Agent not found')
+      }
+
+      const updatedAgent = {
+        ...agent,
+        fileContext: {
+          files: [...(agent.fileContext?.files || []), file],
+          totalSize: (agent.fileContext?.totalSize || 0) + file.size,
+          maxFiles: agent.fileContext?.maxFiles || 20,
+          allowedTypes: agent.fileContext?.allowedTypes || []
+        }
+      }
+
+      // Save updated agent to Irys if connected
+      if (isConnected && address) {
+        try {
+          const response = await fetch('/api/save-agent-optimized', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              ...updatedAgent,
+              userAddress: address
+            })
+          });
+          
+          if (!response.ok) {
+            const errorData = await response.json();
+            throw new Error(errorData.error || 'Failed to save agent with file');
+          }
+          
+          const result = await response.json();
+          updatedAgent.irysId = result.transactionId;
+        } catch (error) {
+          console.warn('Failed to save agent with file via API:', error);
+        }
+      }
+
+      setAgents(prev => prev.map(a => a.id === agentId ? updatedAgent : a))
+    } catch (error) {
+      console.error('Error adding file to agent:', error)
+      throw error
+    }
+  }
+
+  const removeFileFromAgent = async (agentId: string, fileId: string) => {
+    try {
+      const agent = agents.find(a => a.id === agentId)
+      if (!agent || !agent.fileContext) {
+        throw new Error('Agent or file context not found')
+      }
+
+      const fileToRemove = agent.fileContext.files.find(f => f.id === fileId)
+      if (!fileToRemove) {
+        throw new Error('File not found')
+      }
+
+      const updatedAgent = {
+        ...agent,
+        fileContext: {
+          ...agent.fileContext,
+          files: agent.fileContext.files.filter(f => f.id !== fileId),
+          totalSize: agent.fileContext.totalSize - fileToRemove.size
+        }
+      }
+
+      // Save updated agent to Irys if connected
+      if (isConnected && address) {
+        try {
+          const response = await fetch('/api/save-agent-optimized', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              ...updatedAgent,
+              userAddress: address
+            })
+          });
+          
+          if (!response.ok) {
+            const errorData = await response.json();
+            throw new Error(errorData.error || 'Failed to save agent after file removal');
+          }
+          
+          const result = await response.json();
+          updatedAgent.irysId = result.transactionId;
+        } catch (error) {
+          console.warn('Failed to save agent after file removal via API:', error);
+        }
+      }
+
+      setAgents(prev => prev.map(a => a.id === agentId ? updatedAgent : a))
+    } catch (error) {
+      console.error('Error removing file from agent:', error)
+      throw error
+    }
+  }
+
+  const getAgentFiles = (agentId: string): FileAttachment[] => {
+    const agent = agents.find(a => a.id === agentId)
+    return agent?.fileContext?.files || []
+  }
+
   return (
     <AgentsContext.Provider value={{ 
       agents, 
@@ -191,6 +344,9 @@ export function AgentsProvider({ children }: { children: ReactNode }) {
       removeAgent, 
       getAgent,
       loadUserAgents,
+      addFileToAgent,
+      removeFileFromAgent,
+      getAgentFiles,
       isLoading
     }}>
       {children}

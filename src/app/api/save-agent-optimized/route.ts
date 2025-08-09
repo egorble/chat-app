@@ -7,7 +7,7 @@ import { Ethereum } from '@irys/upload-ethereum';
 
 export async function POST(request: NextRequest) {
   try {
-    const { id, name, description, systemPrompt, userAddress, deleted = false } = await request.json();
+    const { id, name, description, systemPrompt, userAddress, deleted = false, fileContext } = await request.json();
 
     // Validate required fields
     if (!id || !name || !systemPrompt || !userAddress) {
@@ -108,6 +108,7 @@ export async function POST(request: NextRequest) {
       systemPrompt,
       userAddress,
       deleted,
+      fileContext,
       createdAt: isUpdate ? undefined : new Date().toISOString(), // Only set on creation
       updatedAt: new Date().toISOString(),
       deletedAt: deleted ? new Date().toISOString() : undefined

@@ -19,7 +19,9 @@ export function AgentsInterface() {
             <h1 className="text-2xl font-semibold text-gray-900 mb-2">My Agents</h1>
             <p className="text-gray-600 mt-4">Your trusted sidekicks for automating tasks and supercharging productivity.</p>
           </div>
-          <CreateAgentDialog onCreateAgent={addAgent} />
+          <CreateAgentDialog onCreateAgent={async (agent) => {
+            await addAgent(agent, agent.files)
+          }} />
         </div>
 
         {/* My Agents Section */}

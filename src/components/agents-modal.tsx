@@ -123,7 +123,7 @@ export function AgentsModal({ open, onOpenChange, onSelectAgent }: AgentsModalPr
         onOpenChange={setShowCreateDialog}
         onCreateAgent={async (agent) => {
           try {
-            await addAgent(agent)
+            await addAgent(agent, agent.files)
             setShowCreateDialog(false)
           } catch (error) {
             console.error('Failed to create agent:', error)

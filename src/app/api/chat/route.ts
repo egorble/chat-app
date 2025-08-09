@@ -12,11 +12,11 @@ const openai = new OpenAI({
 
 export async function POST(request: NextRequest) {
   try {
-    const { message, systemPrompt, conversationHistory } = await request.json();
+    const { message, systemPrompt, conversationHistory, files } = await request.json();
 
-    if (!message) {
+    if (!message && (!files || files.length === 0)) {
       return NextResponse.json(
-        { error: 'Message is required' },
+        { error: 'Message or files are required' },
         { status: 400 }
       );
     }
@@ -41,14 +41,42 @@ export async function POST(request: NextRequest) {
       })));
     }
     
+    // Prepare user message content
+    let userContent = message || '';
+    
+    // Add file contents if files are provided
+    if (files && files.length > 0) {
+      const fileContents = [];
+      
+      for (const file of files) {
+        try {
+          // Fetch file content from our API
+          const fileResponse = await fetch(`${process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000'}/api/upload-file-context?irysId=${file.irysId}`);
+          if (fileResponse.ok) {
+            const fileData = await fileResponse.text();
+            fileContents.push(`\n\n--- File: ${file.name} (${file.type}) ---\n${fileData}\n--- End of ${file.name} ---`);
+          } else {
+            fileContents.push(`\n\n--- File: ${file.name} (${file.type}) ---\n[Error: Could not load file content]\n--- End of ${file.name} ---`);
+          }
+        } catch (error) {
+          console.error(`Error loading file ${file.name}:`, error);
+          fileContents.push(`\n\n--- File: ${file.name} (${file.type}) ---\n[Error: Could not load file content]\n--- End of ${file.name} ---`);
+        }
+      }
+      
+      if (fileContents.length > 0) {
+        userContent += '\n\nAttached files:' + fileContents.join('');
+      }
+    }
+    
     // Add the current user message
     messages.push({
       role: 'user',
-      content: message,
+      content: userContent,
     });
 
     const completion = await openai.chat.completions.create({
-      model: 'openai/gpt-oss-120b',
+      model: 'openai/gpt-oss-20b',
       messages,
       stream: true,
     });

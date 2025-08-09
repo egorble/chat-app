@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useEffect, useRef } from "react"
-import { Send, Lightbulb, Mic, MoreHorizontal, Moon, Sun, Bot } from "lucide-react"
+import { Send, Lightbulb, Mic, MoreHorizontal, Moon, Sun, Bot, Paperclip, X } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
@@ -15,6 +15,9 @@ import { useAgents } from "@/contexts/agents-context"
 import { useChatHistory } from "@/contexts/chat-history-context"
 import { AgentsModal } from "@/components/agents-modal"
 import { useAccount } from "wagmi"
+import { FileUploadZone } from "@/components/ui/file-upload-zone"
+import { FileDisplay } from "@/components/ui/file-display"
+import type { UploadedFile } from "../types/file"
 
 // Create the colorful logo component
 function ChatLogo() {
@@ -45,6 +48,7 @@ interface Message {
   role: 'user' | 'assistant'
   content: string
   agent?: string
+  files?: UploadedFile[]
 }
 
 export function ChatInterface() {
@@ -54,6 +58,8 @@ export function ChatInterface() {
   const [isLoading, setIsLoading] = useState(false)
   const [selectedAgent, setSelectedAgent] = useState<string | null>(null)
   const [showAgentsModal, setShowAgentsModal] = useState(false)
+  const [attachedFiles, setAttachedFiles] = useState<UploadedFile[]>([])
+  const [showFileUpload, setShowFileUpload] = useState(false)
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const { agents, getAgent } = useAgents()
@@ -257,8 +263,16 @@ export function ChatInterface() {
 
 
 
+  const handleFileUpload = (files: UploadedFile[]) => {
+    setAttachedFiles(prev => [...prev, ...files])
+  }
+
+  const removeAttachedFile = (fileId: string) => {
+    setAttachedFiles(prev => prev.filter(f => f.id !== fileId))
+  }
+
   const sendMessage = async () => {
-    if (!message.trim() || isLoading) return
+    if ((!message.trim() && attachedFiles.length === 0) || isLoading) return
 
     const userMessage = message.trim()
     let agentToUse = null
@@ -295,7 +309,8 @@ export function ChatInterface() {
     const userMessageObj = { 
       role: 'user' as const, 
       content: userMessage,
-      agent: agentName 
+      agent: agentName,
+      files: attachedFiles.length > 0 ? [...attachedFiles] : undefined
     }
     
     // Add user message to current messages
@@ -320,6 +335,8 @@ export function ChatInterface() {
     }, 0)
     
     setMessage('')
+    setAttachedFiles([])
+    setShowFileUpload(false)
     
     // Reset textarea height
     if (textareaRef.current) {
@@ -329,6 +346,22 @@ export function ChatInterface() {
     setIsLoading(true)
 
     try {
+      // Combine attached files with agent's file context
+      let allFiles = [...attachedFiles]
+      
+      // Add agent's file context if agent is selected
+      if (agentToUse && agentToUse.fileContext && agentToUse.fileContext.files && agentToUse.fileContext.files.length > 0) {
+        const agentFiles = agentToUse.fileContext.files.map((file: any) => ({
+          id: file.id,
+          name: file.name,
+          size: file.size,
+          type: file.type,
+          uploadedAt: new Date(file.uploadedAt),
+          irysId: file.irysId
+        }))
+        allFiles = [...allFiles, ...agentFiles]
+      }
+      
       const response = await fetch('/api/chat', {
         method: 'POST',
         headers: {
@@ -337,7 +370,8 @@ export function ChatInterface() {
         body: JSON.stringify({ 
           message: userMessage,
           systemPrompt: agentToUse?.systemPrompt,
-          conversationHistory: messages // Pass current conversation history for context
+          conversationHistory: messages, // Pass current conversation history for context
+          files: allFiles.length > 0 ? allFiles : undefined // Pass both attached files and agent's file context
         }),
       })
 
@@ -594,6 +628,13 @@ export function ChatInterface() {
                       <span>via {msg.agent}</span>
                     </div>
                   )}
+                  {msg.files && msg.files.length > 0 && (
+                    <div className="mb-3 space-y-2">
+                      {msg.files.map((file) => (
+                        <FileDisplay key={file.id} file={file} />
+                      ))}
+                    </div>
+                  )}
                   {msg.role === 'assistant' ? (
                        <div className="prose prose-sm max-w-none prose-headings:text-gray-800 prose-p:text-gray-700 prose-strong:text-gray-800 prose-blockquote:border-l-4 prose-blockquote:border-gray-300 prose-blockquote:pl-4 prose-ul:list-disc prose-ol:list-decimal prose-table:table-auto prose-th:border prose-th:border-gray-300 prose-td:border prose-td:border-gray-300">
                          <ReactMarkdown 
@@ -705,6 +746,66 @@ export function ChatInterface() {
         <div className="p-4 flex-shrink-0">
           <div className="w-full max-w-3xl mx-auto">
             <div className="relative">
+              {/* File upload zone */}
+              {showFileUpload && (
+                <div className="mb-4 p-4 border border-gray-200 rounded-lg bg-gray-50">
+                  <div className="flex items-center justify-between mb-3">
+                    <h3 className="text-sm font-medium text-gray-700">Attach Files</h3>
+                    <Button
+                      onClick={() => setShowFileUpload(false)}
+                      variant="ghost"
+                      size="sm"
+                      className="p-1"
+                    >
+                      <X className="h-4 w-4" />
+                    </Button>
+                  </div>
+                  <FileUploadZone onFilesUploaded={handleFileUpload} />
+                </div>
+              )}
+              
+              {/* Attached files preview */}
+              {attachedFiles.length > 0 && (
+                <div className="mb-3 p-3 border border-gray-200 rounded-lg bg-gray-50">
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-sm font-medium text-gray-700">
+                      Attached Files ({attachedFiles.length})
+                    </span>
+                    <Button
+                      onClick={() => setAttachedFiles([])}
+                      variant="ghost"
+                      size="sm"
+                      className="p-1 text-gray-500 hover:text-gray-700"
+                    >
+                      <X className="h-3 w-3" />
+                    </Button>
+                  </div>
+                  <div className="space-y-2">
+                    {attachedFiles.map((file) => (
+                      <div key={file.id} className="flex items-center justify-between p-2 bg-white rounded border">
+                        <div className="flex items-center gap-2">
+                          <Paperclip className="h-3 w-3 text-gray-400" />
+                          <span className="text-xs text-gray-600 truncate max-w-[200px]">
+                            {file.name}
+                          </span>
+                          <span className="text-xs text-gray-400">
+                            ({(file.size / 1024).toFixed(1)} KB)
+                          </span>
+                        </div>
+                        <Button
+                          onClick={() => removeAttachedFile(file.id)}
+                          variant="ghost"
+                          size="sm"
+                          className="p-1 text-gray-400 hover:text-red-500"
+                        >
+                          <X className="h-3 w-3" />
+                        </Button>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+              
               <div className="flex items-center gap-2 p-3 border border-gray-200 rounded-lg bg-white shadow-sm">
                 <Button 
                   onClick={() => setShowAgentsModal(true)}
@@ -724,6 +825,15 @@ export function ChatInterface() {
                   </svg>
                 </Button>
                 
+                <Button 
+                  onClick={() => setShowFileUpload(!showFileUpload)}
+                  variant="ghost" 
+                  size="sm" 
+                  className="p-1.5"
+                >
+                  <Paperclip className="h-4 w-4 text-gray-500" />
+                </Button>
+                
                 <div className="flex-1 relative">
                   <Textarea
                     ref={textareaRef}
@@ -740,7 +850,7 @@ export function ChatInterface() {
                 <div className="flex items-center gap-2">
                   <Button 
                     onClick={sendMessage}
-                    disabled={!message.trim() || isLoading}
+                    disabled={(!message.trim() && attachedFiles.length === 0) || isLoading}
                     variant="ghost" 
                     size="sm" 
                     className="p-1.5"

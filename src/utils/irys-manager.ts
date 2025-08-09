@@ -10,32 +10,50 @@ class IrysManager {
   private isInitialized = false;
 
   async initialize() {
-    if (this.isInitialized) {
-      console.log('♻️ Using existing Irys instance');
+    if (this.isInitialized && this.irys) {
       return this.irys;
     }
 
     try {
       console.log('🔧 Initializing Irys connection...');
-      // Check if wallet is connected
-      if (!window.ethereum) {
-        console.error('❌ MetaMask not found');
-        throw new Error('No Ethereum wallet found');
-      }
-      console.log('✅ MetaMask detected');
+      
+      // Check if we're in browser environment
+      if (typeof window === 'undefined') {
+        console.log('🖥️ Server environment detected, using JSON RPC provider');
+        
+        // Use JSON RPC provider for server-side operations
+        const rpcUrl = process.env.NEXT_PUBLIC_ARBITRUM_RPC_URL || 'https://arb1.arbitrum.io/rpc';
+        console.log('🌐 Using RPC URL:', rpcUrl);
+        
+        const provider = new ethers.JsonRpcProvider(rpcUrl);
+        console.log('🔗 JSON RPC provider created');
+        
+        // Initialize Irys with server-side configuration
+        this.irys = await WebUploader(WebArbitrum)
+          .withAdapter(EthersV6Adapter(provider))
+          .withRpc(rpcUrl);
+          
+      } else {
+        // Browser environment - check for wallet
+        if (!window.ethereum) {
+          console.error('❌ MetaMask not found');
+          throw new Error('No Ethereum wallet found');
+        }
+        console.log('✅ MetaMask detected');
 
-      // Create provider for Arbitrum mainnet with custom RPC
-      const rpcUrl = process.env.NEXT_PUBLIC_ARBITRUM_RPC_URL || 'https://arb1.arbitrum.io/rpc';
-      console.log('🌐 Using RPC URL:', rpcUrl);
-      
-      const provider = new BrowserProvider(window.ethereum);
-      console.log('🔗 Ethereum provider created');
-      
-      // Initialize Irys with WebArbitrum and EthersV6Adapter
-      this.irys = await WebUploader(WebArbitrum)
-        .withAdapter(EthersV6Adapter(provider))
-        .withRpc(rpcUrl);
-      console.log('🎯 Irys WebUploader initialized with Arbitrum and custom config');
+        // Create provider for Arbitrum mainnet with custom RPC
+        const rpcUrl = process.env.NEXT_PUBLIC_ARBITRUM_RPC_URL || 'https://arb1.arbitrum.io/rpc';
+        console.log('🌐 Using RPC URL:', rpcUrl);
+        
+        const provider = new BrowserProvider(window.ethereum);
+        console.log('🔗 Ethereum provider created');
+        
+        // Initialize Irys with WebArbitrum and EthersV6Adapter
+        this.irys = await WebUploader(WebArbitrum)
+          .withAdapter(EthersV6Adapter(provider))
+          .withRpc(rpcUrl);
+        console.log('🎯 Irys WebUploader initialized with Arbitrum and custom config');
+      }
       
       this.isInitialized = true;
       return this.irys;
@@ -319,6 +337,129 @@ class IrysManager {
       };
     } catch (error) {
       console.error('❌ Error in optimized agents load:', error);
+      throw error;
+    }
+  }
+
+  // Upload data to Irys
+  async uploadData(data: Buffer, tags: Record<string, string>) {
+    try {
+      console.log('⬆️ Starting data upload to Irys...');
+      
+      const irys = await this.initialize();
+      
+      // Convert tags object to array format
+      const tagsArray = Object.entries(tags).map(([name, value]) => ({ name, value }));
+      
+      // Create stream from buffer
+      const stream = streamifier.createReadStream(data);
+      
+      // Upload to Irys
+      const receipt = await irys.upload(stream, { tags: tagsArray });
+      console.log('🎉 Data upload successful! Irys ID:', receipt.id);
+      
+      return receipt;
+    } catch (error) {
+      console.error('❌ Error uploading data to Irys:', error);
+      throw error;
+    }
+  }
+
+  // Get data from Irys
+  async getData(irysId: string) {
+    try {
+      console.log('📥 Fetching data from Irys ID:', irysId);
+      
+      const response = await fetch(`https://gateway.irys.xyz/${irysId}`);
+      if (!response.ok) {
+        throw new Error(`Failed to fetch data: ${response.statusText}`);
+      }
+      
+      const data = await response.arrayBuffer();
+      console.log('✅ Data fetched successfully, size:', data.byteLength);
+      
+      return Buffer.from(data);
+    } catch (error) {
+      console.error('❌ Error fetching data from Irys:', error);
+      throw error;
+    }
+  }
+
+  // Upload file to Irys
+  async uploadFile(buffer: Buffer, metadata: {
+    name: string;
+    type: string;
+    size: number;
+    description?: string;
+    temporary?: boolean;
+    agentId?: string;
+  }) {
+    try {
+      console.log('📁 Starting file upload to Irys:', metadata.name);
+      
+      const irys = await this.initialize();
+      
+      // Prepare tags for file
+      const tags: Record<string, string> = {
+        'App-Name': 'ChatAppAgents',
+        'Type': 'file-attachment',
+        'File-Name': metadata.name,
+        'File-Type': metadata.type,
+        'File-Size': metadata.size.toString(),
+        'Uploaded-At': new Date().toISOString()
+      };
+      
+      if (metadata.description) {
+        tags['Description'] = metadata.description;
+      }
+      
+      if (metadata.temporary) {
+        tags['Temporary'] = 'true';
+      }
+      
+      if (metadata.agentId) {
+        tags['Agent-ID'] = metadata.agentId;
+      }
+      
+      // Convert tags object to array format
+      const tagsArray = Object.entries(tags).map(([name, value]) => ({ name, value }));
+      
+      // Create stream from buffer
+      const stream = streamifier.createReadStream(buffer);
+      
+      // Upload to Irys
+      const receipt = await irys.upload(stream, { tags: tagsArray });
+      console.log('🎉 File upload successful! Irys ID:', receipt.id);
+      
+      return receipt.id;
+    } catch (error) {
+      console.error('❌ Error uploading file to Irys:', error);
+      throw error;
+    }
+  }
+
+  // Download file from Irys
+  async downloadFile(irysId: string) {
+    try {
+      console.log('📥 Downloading file from Irys ID:', irysId);
+      
+      const response = await fetch(`https://gateway.irys.xyz/${irysId}`);
+      if (!response.ok) {
+        throw new Error(`Failed to download file: ${response.statusText}`);
+      }
+      
+      const buffer = await response.arrayBuffer();
+      const contentType = response.headers.get('content-type') || 'application/octet-stream';
+      
+      console.log('✅ File downloaded successfully, size:', buffer.byteLength);
+      
+      return {
+        buffer: Buffer.from(buffer),
+        contentType,
+        filename: `file_${irysId}`
+      };
+    } catch (error) {
+      console.error('❌ Error downloading file from Irys:', error);
       throw error;
     }
   }
