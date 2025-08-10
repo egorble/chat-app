@@ -109,8 +109,8 @@ export function ChatHistoryProvider({ children }: { children: ReactNode }) {
             ...chat, 
             messages: [...messages],
             lastMessage: messages.length > 0 ? messages[messages.length - 1].content : undefined,
-            // Only mark as not_saved if messages actually changed
-            irysSaveStatus: messagesChanged ? 'not_saved' as const : chat.irysSaveStatus
+            // Mark as not_saved if messages changed and this is not an empty new chat
+            irysSaveStatus: messagesChanged && messages.length > 0 ? 'not_saved' as const : chat.irysSaveStatus
           }
         }
         return chat
@@ -120,6 +120,7 @@ export function ChatHistoryProvider({ children }: { children: ReactNode }) {
       const chatExists = prev.some(chat => chat.id === chatId)
       if (!chatExists) {
         console.warn('Attempting to save messages to non-existent chat:', chatId)
+        console.log('Available chats:', prev.map(c => ({ id: c.id, title: c.title })))
       }
       
       return updatedSessions
@@ -342,11 +343,25 @@ export function ChatHistoryProvider({ children }: { children: ReactNode }) {
 
         console.log(`🎯 Successfully loaded ${loadedSessions.length} active chats`)
         
-        // Sort by creation date (newest first) and update state
-        const sortedSessions = loadedSessions.sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())
-        setChatSessions(sortedSessions)
+        // Merge with existing local chats to preserve unsaved new chats
+        setChatSessions(prev => {
+          // Find local chats that are not in loaded sessions (unsaved new chats)
+          const localUnsavedChats = prev.filter(localChat => 
+            !loadedSessions.some(loadedChat => loadedChat.id === localChat.id)
+          )
+          
+          console.log(`🔄 Preserving ${localUnsavedChats.length} local unsaved chats`)
+          
+          // Combine loaded chats with local unsaved chats
+          const allChats = [...localUnsavedChats, ...loadedSessions]
+          
+          // Sort by creation date (newest first)
+          const sortedSessions = allChats.sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())
+          
+          return sortedSessions
+        })
         
-        console.log('📋 Chat sessions state updated with active chats only')
+        console.log('📋 Chat sessions state updated with active chats and preserved local chats')
       } else {
         console.log('📭 No active chats found, setting empty array')
         setChatSessions([])

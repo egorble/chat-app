@@ -117,8 +117,14 @@ export function ChatInterface() {
       chatStateRef.current[previousChatId] = [...currentMessages]
       
       // Save to context (async to avoid setState during render)
+      // Only save if the chat still exists in the context
       setTimeout(() => {
-        saveMessagesToChat(previousChatId, currentMessages)
+        const chatExists = getChatMessages(previousChatId) !== null
+        if (chatExists || previousChatId.startsWith('chat-')) {
+          saveMessagesToChat(previousChatId, currentMessages)
+        } else {
+          console.warn('Skipping save for non-existent chat:', previousChatId)
+        }
       }, 0)
     }
 
@@ -540,8 +546,18 @@ export function ChatInterface() {
     
     // Save current messages if there are any
     if (currentChatId && messages.length > 0) {
+      console.log('💾 Saving current chat before creating new one:', currentChatId, 'messages:', messages.length)
       chatStateRef.current[currentChatId] = [...messages]
+      
+      // Save to context immediately (synchronously)
       saveMessagesToChat(currentChatId, messages)
+      
+      // Also save to Irys if connected
+      if (address) {
+        setTimeout(() => {
+          saveChatToIrys(currentChatId, messages)
+        }, 100)
+      }
     }
     
     // Create new chat
