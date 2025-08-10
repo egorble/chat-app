@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect, useRef } from "react"
+import { useState, useEffect, useRef, useMemo } from "react"
 import { Send, Lightbulb, Mic, MoreHorizontal, Moon, Sun, Bot, Paperclip, X } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -78,8 +78,10 @@ export function ChatInterface() {
   } = useChatHistory()
   const { address, isConnected } = useAccount()
   
-  // Get current chat session for Irys link
-  const currentChat = chatSessions.find(chat => chat.id === currentChatId)
+  // Get current chat session for Irys link with proper reactivity
+  const currentChat = useMemo(() => {
+    return chatSessions.find(chat => chat.id === currentChatId)
+  }, [chatSessions, currentChatId])
   
   // Debug log for currentChat and irysId
   useEffect(() => {
