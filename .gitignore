@@ -32,6 +32,8 @@ yarn-error.log*
 
 # env files (can opt-in for committing if needed)
 .env*
+!.env.example
+!.env.production
 
 # vercel
 .vercel
@@ -39,3 +41,21 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# production deployment
+/logs
+*.log
+/backups
+
+# PM2
+.pm2
+pids
+*.pid
+*.seed
+*.pid.lock
+
+# SSL certificates
+*.pem
+*.key
+*.crt
+*.csr

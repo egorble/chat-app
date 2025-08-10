@@ -1,0 +1,34 @@
+[Unit]
+Description=DataChat Next.js Application
+After=network.target
+Wants=network.target
+
+[Service]
+Type=simple
+User=www-data
+Group=www-data
+WorkingDirectory=/var/www/datachat
+Environment=NODE_ENV=production
+Environment=PORT=3003
+EnvironmentFile=/var/www/datachat/.env.production
+ExecStart=/usr/bin/node server.js
+Restart=always
+RestartSec=10
+KillMode=mixed
+KillSignal=SIGINT
+TimeoutStopSec=5
+SyslogIdentifier=datachat
+
+# Security settings
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/www/datachat
+
+# Resource limits
+LimitNOFILE=65536
+LimitNPROC=4096
+
+[Install]
+WantedBy=multi-user.target

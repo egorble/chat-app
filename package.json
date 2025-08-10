@@ -5,8 +5,12 @@
   "scripts": {
     "dev": "next dev --turbopack",
     "build": "next build",
-    "start": "next start",
-    "lint": "next lint"
+    "start": "next start -p 3003",
+    "start:prod": "NODE_ENV=production next start -p 3003",
+    "build:prod": "NODE_ENV=production next build",
+    "lint": "next lint",
+    "deploy": "chmod +x deploy.sh && ./deploy.sh",
+    "update:prod": "chmod +x update.sh && ./update.sh"
   },
   "dependencies": {
     "@irys/query": "^0.0.13",
