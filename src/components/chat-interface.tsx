@@ -17,32 +17,8 @@ import { AgentsModal } from "@/components/agents-modal"
 import { useAccount } from "wagmi"
 import { FileUploadZone } from "@/components/ui/file-upload-zone"
 import { FileDisplay } from "@/components/ui/file-display"
+import { ChatLogo3D } from "@/components/3d/ChatLogo3D"
 import type { UploadedFile } from "../types/file"
-
-// Create the colorful logo component
-function ChatLogo() {
-  return (
-    <div className="flex items-center justify-center mb-8">
-      <div className="relative">
-        {/* Main logo with vibrant gradient blocks */}
-        <div className="flex flex-col gap-0.5">
-          <div className="flex gap-0.5">
-            <div className="w-6 h-6 bg-gradient-to-br from-yellow-300 via-orange-400 to-orange-500 rounded-sm shadow-sm" />
-            <div className="w-6 h-6 bg-gradient-to-br from-orange-400 via-red-400 to-red-500 rounded-sm shadow-sm" />
-          </div>
-          <div className="flex gap-0.5">
-            <div className="w-6 h-6 bg-gradient-to-br from-orange-500 via-red-500 to-red-600 rounded-sm shadow-sm" />
-            <div className="w-6 h-6 bg-gradient-to-br from-red-500 via-red-600 to-pink-600 rounded-sm shadow-sm" />
-          </div>
-          <div className="flex gap-0.5">
-            <div className="w-6 h-6 bg-gradient-to-br from-red-600 via-pink-600 to-purple-600 rounded-sm shadow-sm" />
-            <div className="w-6 h-6 bg-gradient-to-br from-pink-600 via-purple-600 to-purple-700 rounded-sm shadow-sm" />
-          </div>
-        </div>
-      </div>
-    </div>
-  )
-}
 
 interface Message {
   role: 'user' | 'assistant'
@@ -725,11 +701,11 @@ export function ChatInterface() {
           </div>
         ) : (
           <div className="flex-1 flex flex-col items-center justify-center px-8">
-            <ChatLogo />
+            <ChatLogo3D size="lg" className="mb-8" />
             
             <div className="text-center mb-8">
               <h1 className="text-xl font-medium text-gray-600 mb-2">
-                Ask Le Chat anything
+                Ask DataChat anything
               </h1>
               <Button 
                 onClick={handleNewChat}

@@ -60,7 +60,7 @@ export function AgentsModal({ open, onOpenChange, onSelectAgent }: AgentsModalPr
           </div>
 
           <div className="px-6 pb-4">
-            <h3 className="text-sm font-medium text-gray-700 mb-3">Le Chat Agents</h3>
+            <h3 className="text-sm font-medium text-gray-700 mb-3">DataChat Agents</h3>
             
             <div className="space-y-2 max-h-[400px] overflow-y-auto">
               {/* Default Chat Option */}
